@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from linear_models.base import BaseLinearModel
@@ -28,3 +29,15 @@ def test_dummy_model_stores_params():
     assert model.learning_rate == 0.1
     assert model.penalty == "l2"
     assert model.max_iter == 1000
+
+
+def test_linear_output():
+    model = DummyModel()
+    model.coef_ = np.array([1.0, 1.0])
+    model.intercept_ = 0.5
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    result = model._linear_output(X)
+
+    assert result.shape == (2,)
+    assert np.allclose(result, [3.5, 7.5])
