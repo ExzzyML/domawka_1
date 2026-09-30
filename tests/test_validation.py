@@ -47,3 +47,8 @@ def test_invalid_solver_raises():
     model = DummyModel(solver="banana")
     with pytest.raises(ValueError, match="solver"):
         model._validate_params()
+
+def test_invalid_penalty_raises():
+    model = DummyModel(penalty="banana")
+    with pytest.raises(ValueError, match="penalty"):
+        model._validate_params()

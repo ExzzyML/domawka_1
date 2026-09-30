@@ -35,6 +35,10 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"solver must be 'gradient' or 'analytic', got {self.solver!r}"
             )
+        if self.penalty not in (None, "l1", "l2"):
+            raise ValueError(
+                f"penalty must be None, 'l1' or 'l2', got {self.penalty!r}"
+            )
 
     @abstractmethod
     def fit(self, X, y):
