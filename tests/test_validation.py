@@ -48,10 +48,12 @@ def test_invalid_solver_raises():
     with pytest.raises(ValueError, match="solver"):
         model._validate_params()
 
+
 def test_invalid_penalty_raises():
     model = DummyModel(penalty="banana")
     with pytest.raises(ValueError, match="penalty"):
         model._validate_params()
+
 
 @pytest.mark.parametrize("bad_value", [0, -0.1, "0.1", None, True, float("nan")])
 def test_invalid_learning_rate_raises(bad_value):
@@ -81,8 +83,10 @@ def test_invalid_tol_raises(bad_value):
     with pytest.raises(ValueError, match="tol"):
         model._validate_params()
 
+
 def test_numpy_tol_is_valid():
     DummyModel(tol=np.float64(1e-6))._validate_params()
+
 
 @pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
 def test_valid_tol_accepted(good_value):
@@ -95,8 +99,10 @@ def test_invalid_alpha_raises(bad_value):
     with pytest.raises(ValueError, match="alpha"):
         model._validate_params()
 
+
 def test_numpy_alpha_is_valid():
     DummyModel(alpha=np.float64(1e-6))._validate_params()
+
 
 @pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
 def test_valid_alpha_accepted(good_value):
@@ -105,7 +111,7 @@ def test_valid_alpha_accepted(good_value):
 
 def test_X_must_be_2d():
     model = DummyModel()
-    X = np.array([1.0, 2.0, 3.0])       # ndim == 1, а нужно 2
+    X = np.array([1.0, 2.0, 3.0])  # ndim == 1, а нужно 2
     y = np.array([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match="X must be 2"):
         model._validate_X_y(X, y)
@@ -113,18 +119,19 @@ def test_X_must_be_2d():
 
 def test_y_must_be_1d():
     model = DummyModel()
-    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])   # (3, 2), корректный
-    y = np.array([[1.0], [2.0], [3.0]])                   # (3, 1), ndim == 2, а нужно 1
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])  # (3, 2), корректный
+    y = np.array([[1.0], [2.0], [3.0]])  # (3, 1), ndim == 2, а нужно 1
     with pytest.raises(ValueError, match="y must be 1"):
         model._validate_X_y(X, y)
 
 
 def test_X_and_y_must_have_same_length():
     model = DummyModel()
-    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])   # 3 объекта, shape (3, 2)
-    y = np.array([1.0, 2.0])                              # 2 значения, shape (2,)
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])  # 3 объекта, shape (3, 2)
+    y = np.array([1.0, 2.0])  # 2 значения, shape (2,)
     with pytest.raises(ValueError, match="samples"):
         model._validate_X_y(X, y)
+
 
 def test_valid_X_y_are_returned_as_arrays():
     model = DummyModel()
@@ -163,9 +170,9 @@ def test_check_is_fitted_passes_after_coef_set():
 
 def test_predict_input_rejects_wrong_n_features():
     model = DummyModel()
-    model.coef_ = np.array([1.0, 1.0])       # обучена на 2 признаках
+    model.coef_ = np.array([1.0, 1.0])  # обучена на 2 признаках
     model.intercept_ = 0.0
-    X = np.array([[1.0, 2.0, 3.0]])          # пришло 3 признака
+    X = np.array([[1.0, 2.0, 3.0]])  # пришло 3 признака
     with pytest.raises(ValueError, match="features"):
         model._validate_predict_input(X)
 

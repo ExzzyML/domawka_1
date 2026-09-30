@@ -24,7 +24,6 @@ class NotFittedError(ValueError):
 
 
 class BaseLinearModel(ABC):
-
     def __init__(
         self,
         fit_intercept=True,
@@ -64,17 +63,11 @@ class BaseLinearModel(ABC):
                 f"learning_rate must be a positive number, got {self.learning_rate!r}"
             )
         if not _is_int(self.max_iter) or self.max_iter < 1:
-            raise ValueError(
-                f"max_iter must be an integer >= 1, got {self.max_iter!r}"
-            )
+            raise ValueError(f"max_iter must be an integer >= 1, got {self.max_iter!r}")
         if not _is_number(self.tol) or self.tol < 0:
-            raise ValueError(
-                f"tol must be a non-negative number, got {self.tol!r}"
-            )
+            raise ValueError(f"tol must be a non-negative number, got {self.tol!r}")
         if not _is_number(self.alpha) or self.alpha < 0:
-            raise ValueError(
-                f"alpha must be a non-negative number, got {self.alpha!r}"
-            )
+            raise ValueError(f"alpha must be a non-negative number, got {self.alpha!r}")
 
     def _validate_X(self, X):
         X = np.asarray(X, dtype=float)
@@ -88,9 +81,7 @@ class BaseLinearModel(ABC):
         X = self._validate_X(X)
         y = np.asarray(y, dtype=float)
         if y.ndim != 1:
-            raise ValueError(
-                f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}"
-            )
+            raise ValueError(f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}")
         if X.shape[0] != y.shape[0]:
             raise ValueError(
                 f"X has {X.shape[0]} samples but y has {y.shape[0]} samples"
@@ -102,7 +93,7 @@ class BaseLinearModel(ABC):
             raise NotFittedError(
                 f"{type(self).__name__} is not fitted yet; call fit before predict"
             )
-   
+
     def _validate_predict_input(self, X):
         self._check_is_fitted()
         X = self._validate_X(X)
@@ -113,7 +104,6 @@ class BaseLinearModel(ABC):
                 f"with {n_features} features"
             )
         return X
-
 
     @abstractmethod
     def fit(self, X, y):
