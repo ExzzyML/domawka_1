@@ -85,6 +85,10 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}"
             )
+        if X.shape[0] != y.shape[0]:
+            raise ValueError(
+                f"X has {X.shape[0]} samples but y has {y.shape[0]} samples"
+            )
         return X, y
 
 

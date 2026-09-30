@@ -117,3 +117,18 @@ def test_y_must_be_1d():
     y = np.array([[1.0], [2.0], [3.0]])                   # (3, 1), ndim == 2, а нужно 1
     with pytest.raises(ValueError, match="y must be 1"):
         model._validate_X_y(X, y)
+
+
+def test_X_and_y_must_have_same_length():
+    model = DummyModel()
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])   # 3 объекта, shape (3, 2)
+    y = np.array([1.0, 2.0])                              # 2 значения, shape (2,)
+    with pytest.raises(ValueError, match="samples"):
+        model._validate_X_y(X, y)
+
+def test_valid_X_y_are_returned_as_arrays():
+    model = DummyModel()
+    X_out, y_out = model._validate_X_y([[1, 2], [3, 4]], [5, 6])
+    assert X_out.shape == (2, 2)
+    assert y_out.shape == (2,)
+    assert X_out.dtype == float
