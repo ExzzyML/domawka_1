@@ -74,13 +74,19 @@ class BaseLinearModel(ABC):
                 f"alpha must be a non-negative number, got {self.alpha!r}"
             )
 
-    def _validate_X_y(self, X, y):
+
+    def _validate_X(self, X):
         X = np.asarray(X, dtype=float)
-        y = np.asarray(y, dtype=float)
         if X.ndim != 2:
             raise ValueError(
                 f"X must be 2-dimensional (n_samples, n_features), got ndim={X.ndim}"
             )
+        return X
+
+    
+    def _validate_X_y(self, X, y):
+        X = self._validate_X(X)
+        y = np.asarray(y, dtype=float)
         if y.ndim != 1:
             raise ValueError(
                 f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}"

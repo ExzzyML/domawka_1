@@ -132,3 +132,17 @@ def test_valid_X_y_are_returned_as_arrays():
     assert X_out.shape == (2, 2)
     assert y_out.shape == (2,)
     assert X_out.dtype == float
+
+
+@pytest.mark.parametrize("bad_X", [[1.0, 2.0, 3.0], [[[1.0]]]])
+def test_validate_X_rejects_wrong_ndim(bad_X):
+    model = DummyModel()
+    with pytest.raises(ValueError, match="X must be 2"):
+        model._validate_X(bad_X)
+
+
+def test_validate_X_returns_float_array():
+    model = DummyModel()
+    X_out = model._validate_X([[1, 2], [3, 4]])
+    assert X_out.shape == (2, 2)
+    assert X_out.dtype == float
