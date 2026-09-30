@@ -101,3 +101,11 @@ def test_numpy_alpha_is_valid():
 @pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
 def test_valid_alpha_accepted(good_value):
     DummyModel(alpha=good_value)._validate_params()
+
+
+def test_X_must_be_2d():
+    model = DummyModel()
+    X = np.array([1.0, 2.0, 3.0])       # ndim == 1, а нужно 2
+    y = np.array([1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match="X must be 2"):
+        model._validate_X_y(X, y)

@@ -43,8 +43,10 @@ class BaseLinearModel(ABC):
         self.verbose = verbose
         self.random_state = random_state
 
+
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
+
 
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
@@ -71,6 +73,15 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"alpha must be a non-negative number, got {self.alpha!r}"
             )
+
+    def _validate_X_y(self, X, y):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        if X.ndim != 2:
+            raise ValueError(
+                f"X must be 2-dimensional (n_samples, n_features), got ndim={X.ndim}"
+            )
+        return X, y    
 
 
     @abstractmethod
