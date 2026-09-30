@@ -109,3 +109,11 @@ def test_X_must_be_2d():
     y = np.array([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match="X must be 2"):
         model._validate_X_y(X, y)
+
+
+def test_y_must_be_1d():
+    model = DummyModel()
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])   # (3, 2), корректный
+    y = np.array([[1.0], [2.0], [3.0]])                   # (3, 1), ndim == 2, а нужно 1
+    with pytest.raises(ValueError, match="y must be 1"):
+        model._validate_X_y(X, y)

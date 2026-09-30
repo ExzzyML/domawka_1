@@ -81,7 +81,11 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"X must be 2-dimensional (n_samples, n_features), got ndim={X.ndim}"
             )
-        return X, y    
+        if y.ndim != 1:
+            raise ValueError(
+                f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}"
+            )
+        return X, y
 
 
     @abstractmethod
