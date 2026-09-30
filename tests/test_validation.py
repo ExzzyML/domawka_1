@@ -41,3 +41,9 @@ def test_linear_output():
 
     assert result.shape == (2,)
     assert np.allclose(result, [3.5, 7.5])
+
+
+def test_invalid_solver_raises():
+    model = DummyModel(solver="banana")
+    with pytest.raises(ValueError, match="solver"):
+        model._validate_params()

@@ -30,6 +30,12 @@ class BaseLinearModel(ABC):
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
 
+    def _validate_params(self):
+        if self.solver not in ("gradient", "analytic"):
+            raise ValueError(
+                f"solver must be 'gradient' or 'analytic', got {self.solver!r}"
+            )
+
     @abstractmethod
     def fit(self, X, y):
         """Обучить модель и вернуть self."""
