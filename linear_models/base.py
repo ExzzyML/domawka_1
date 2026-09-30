@@ -47,10 +47,8 @@ class BaseLinearModel(ABC):
         self.verbose = verbose
         self.random_state = random_state
 
-
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
-
 
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
@@ -78,7 +76,6 @@ class BaseLinearModel(ABC):
                 f"alpha must be a non-negative number, got {self.alpha!r}"
             )
 
-
     def _validate_X(self, X):
         X = np.asarray(X, dtype=float)
         if X.ndim != 2:
@@ -87,7 +84,6 @@ class BaseLinearModel(ABC):
             )
         return X
 
-    
     def _validate_X_y(self, X, y):
         X = self._validate_X(X)
         y = np.asarray(y, dtype=float)
@@ -106,6 +102,17 @@ class BaseLinearModel(ABC):
             raise NotFittedError(
                 f"{type(self).__name__} is not fitted yet; call fit before predict"
             )
+   
+    def _validate_predict_input(self, X):
+        self._check_is_fitted()
+        X = self._validate_X(X)
+        n_features = self.coef_.shape[0]
+        if X.shape[1] != n_features:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but the model was fitted "
+                f"with {n_features} features"
+            )
+        return X
 
 
     @abstractmethod

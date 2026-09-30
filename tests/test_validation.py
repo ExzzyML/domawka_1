@@ -159,3 +159,26 @@ def test_check_is_fitted_passes_after_coef_set():
     model.coef_ = np.array([1.0])
     model.intercept_ = 0.0
     model._check_is_fitted()
+
+
+def test_predict_input_rejects_wrong_n_features():
+    model = DummyModel()
+    model.coef_ = np.array([1.0, 1.0])       # обучена на 2 признаках
+    model.intercept_ = 0.0
+    X = np.array([[1.0, 2.0, 3.0]])          # пришло 3 признака
+    with pytest.raises(ValueError, match="features"):
+        model._validate_predict_input(X)
+
+
+def test_predict_input_requires_fitted_model():
+    model = DummyModel()
+    with pytest.raises(NotFittedError):
+        model._validate_predict_input([[1.0, 2.0]])
+
+
+def test_predict_input_accepts_correct_input():
+    model = DummyModel()
+    model.coef_ = np.array([1.0, 1.0])
+    model.intercept_ = 0.0
+    X_out = model._validate_predict_input([[1, 2], [3, 4]])
+    assert X_out.shape == (2, 2)
