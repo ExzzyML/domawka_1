@@ -26,3 +26,7 @@ class BaseLinearModel(ABC):
         self.tol = tol
         self.verbose = verbose
         self.random_state = random_state
+
+    def _linear_output(self, X):
+        return X @ self.coef_ + self.intercept_
+        
