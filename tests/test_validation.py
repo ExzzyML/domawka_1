@@ -62,3 +62,14 @@ def test_invalid_learning_rate_raises(bad_value):
 
 def test_default_params_are_valid():
     DummyModel()._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [0, -5, 10.5, 1000.0, "100", None, True])
+def test_invalid_max_iter_raises(bad_value):
+    model = DummyModel(max_iter=bad_value)
+    with pytest.raises(ValueError, match="max_iter"):
+        model._validate_params()
+
+
+def test_numpy_integer_max_iter_is_valid():
+    DummyModel(max_iter=np.int64(5))._validate_params()

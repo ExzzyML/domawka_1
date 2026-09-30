@@ -14,6 +14,11 @@ def _is_number(value):
     )
 
 
+def _is_int(value):
+    """True для обычного целого числа (не bool)."""
+    return isinstance(value, numbers.Integral) and not isinstance(value, bool)
+
+
 class BaseLinearModel(ABC):
 
     def __init__(
@@ -53,6 +58,10 @@ class BaseLinearModel(ABC):
         if not _is_number(self.learning_rate) or self.learning_rate <= 0:
             raise ValueError(
                 f"learning_rate must be a positive number, got {self.learning_rate!r}"
+            )
+        if not _is_int(self.max_iter) or self.max_iter < 1:
+            raise ValueError(
+                f"max_iter must be an integer >= 1, got {self.max_iter!r}"
             )
 
     @abstractmethod
