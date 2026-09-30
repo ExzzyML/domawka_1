@@ -73,3 +73,17 @@ def test_invalid_max_iter_raises(bad_value):
 
 def test_numpy_integer_max_iter_is_valid():
     DummyModel(max_iter=np.int64(5))._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [-0.1, "0.1", None, True, float("nan")])
+def test_invalid_tol_raises(bad_value):
+    model = DummyModel(tol=bad_value)
+    with pytest.raises(ValueError, match="tol"):
+        model._validate_params()
+
+def test_numpy_tol_is_valid():
+    DummyModel(tol=np.float64(1e-6))._validate_params()
+
+@pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
+def test_valid_tol_accepted(good_value):
+    DummyModel(tol=good_value)._validate_params()

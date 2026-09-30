@@ -63,6 +63,11 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"max_iter must be an integer >= 1, got {self.max_iter!r}"
             )
+        if not _is_number(self.tol) or self.tol < 0:
+            raise ValueError(
+                f"tol must be a non-negative number, got {self.tol!r}"
+            )
+
 
     @abstractmethod
     def fit(self, X, y):
