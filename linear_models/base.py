@@ -1,6 +1,17 @@
+import math
+import numbers
 from abc import ABC, abstractmethod
 
 import numpy as np
+
+
+def _is_number(value):
+    """True для обычного конечного числа (не bool, не nan, не inf)."""
+    return (
+        isinstance(value, numbers.Real)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 class BaseLinearModel(ABC):
@@ -38,6 +49,10 @@ class BaseLinearModel(ABC):
         if self.penalty not in (None, "l1", "l2"):
             raise ValueError(
                 f"penalty must be None, 'l1' or 'l2', got {self.penalty!r}"
+            )
+        if not _is_number(self.learning_rate) or self.learning_rate <= 0:
+            raise ValueError(
+                f"learning_rate must be a positive number, got {self.learning_rate!r}"
             )
 
     @abstractmethod

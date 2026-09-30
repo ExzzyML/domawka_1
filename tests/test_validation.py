@@ -52,3 +52,13 @@ def test_invalid_penalty_raises():
     model = DummyModel(penalty="banana")
     with pytest.raises(ValueError, match="penalty"):
         model._validate_params()
+
+@pytest.mark.parametrize("bad_value", [0, -0.1, "0.1", None, True, float("nan")])
+def test_invalid_learning_rate_raises(bad_value):
+    model = DummyModel(learning_rate=bad_value)
+    with pytest.raises(ValueError, match="learning_rate"):
+        model._validate_params()
+
+
+def test_default_params_are_valid():
+    DummyModel()._validate_params()
