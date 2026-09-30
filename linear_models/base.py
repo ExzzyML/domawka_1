@@ -29,4 +29,19 @@ class BaseLinearModel(ABC):
 
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
-        
+
+    @abstractmethod
+    def fit(self, X, y):
+        """Обучить модель и вернуть self."""
+
+    @abstractmethod
+    def predict(self, X):
+        """Вернуть предсказания для X."""
+
+    @abstractmethod
+    def _loss(self, X, y):
+        """Вернуть значение потерь на данных (число), без регуляризации."""
+
+    @abstractmethod
+    def _gradient(self, X, y):
+        """Вернуть пару (grad_w, grad_b): градиент потерь без регуляризации."""
