@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from linear_models.base import BaseLinearModel
+from linear_models.base import BaseLinearModel, NotFittedError
 
 
 class DummyModel(BaseLinearModel):
@@ -146,3 +146,16 @@ def test_validate_X_returns_float_array():
     X_out = model._validate_X([[1, 2], [3, 4]])
     assert X_out.shape == (2, 2)
     assert X_out.dtype == float
+
+
+def test_check_is_fitted_raises_before_fit():
+    model = DummyModel()
+    with pytest.raises(NotFittedError, match="not fitted"):
+        model._check_is_fitted()
+
+
+def test_check_is_fitted_passes_after_coef_set():
+    model = DummyModel()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    model._check_is_fitted()

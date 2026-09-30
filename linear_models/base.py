@@ -19,6 +19,10 @@ def _is_int(value):
     return isinstance(value, numbers.Integral) and not isinstance(value, bool)
 
 
+class NotFittedError(ValueError):
+    """Модель используется до обучения."""
+
+
 class BaseLinearModel(ABC):
 
     def __init__(
@@ -96,6 +100,12 @@ class BaseLinearModel(ABC):
                 f"X has {X.shape[0]} samples but y has {y.shape[0]} samples"
             )
         return X, y
+
+    def _check_is_fitted(self):
+        if not (hasattr(self, "coef_") and hasattr(self, "intercept_")):
+            raise NotFittedError(
+                f"{type(self).__name__} is not fitted yet; call fit before predict"
+            )
 
 
     @abstractmethod
