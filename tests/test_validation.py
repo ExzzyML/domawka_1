@@ -1,3 +1,8 @@
-def test_package_is_importable():
-    import linear_models
-    assert linear_models is not None
+import pytest
+
+from linear_models.base import BaseLinearModel
+
+
+def test_base_model_cannot_be_instantiated():
+    with pytest.raises(TypeError):
+        BaseLinearModel()
