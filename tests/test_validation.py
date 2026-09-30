@@ -87,3 +87,17 @@ def test_numpy_tol_is_valid():
 @pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
 def test_valid_tol_accepted(good_value):
     DummyModel(tol=good_value)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [-0.1, "0.1", None, True, float("nan")])
+def test_invalid_alpha_raises(bad_value):
+    model = DummyModel(alpha=bad_value)
+    with pytest.raises(ValueError, match="alpha"):
+        model._validate_params()
+
+def test_numpy_alpha_is_valid():
+    DummyModel(alpha=np.float64(1e-6))._validate_params()
+
+@pytest.mark.parametrize("good_value", [0, 0.0, 1e-6])
+def test_valid_alpha_accepted(good_value):
+    DummyModel(alpha=good_value)._validate_params()

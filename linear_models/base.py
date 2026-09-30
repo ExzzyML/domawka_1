@@ -67,6 +67,10 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"tol must be a non-negative number, got {self.tol!r}"
             )
+        if not _is_number(self.alpha) or self.alpha < 0:
+            raise ValueError(
+                f"alpha must be a non-negative number, got {self.alpha!r}"
+            )
 
 
     @abstractmethod
