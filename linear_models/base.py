@@ -71,6 +71,18 @@ class BaseLinearModel(ABC):
         """Полная цель J = потери на данных + штраф (число)."""
         return self._loss(X, y) + self._penalty_loss()
 
+    def _fit_gradient(self, X, y):
+        """Градиентный спуск: обновляет coef_ и intercept_, ведёт историю."""
+        self.loss_history_ = []
+        for i in range(self.max_iter):
+            grad_w, grad_b = self._gradient(X, y)
+            grad_w = grad_w + self._penalty_gradient()
+            self.coef_ = self.coef_ - self.learning_rate * grad_w
+            self.intercept_ = self.intercept_ - self.learning_rate * grad_b
+            self.loss_history_.append(self._objective(X, y))
+            self.n_iter_ = i + 1
+        return self
+
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
             raise ValueError(
