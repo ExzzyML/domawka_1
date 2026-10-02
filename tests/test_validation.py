@@ -283,3 +283,33 @@ def test_fit_gradient_includes_penalty_gradient():
     assert model.n_iter_ == 1
     assert len(model.loss_history_) == 1
     assert np.allclose(model.loss_history_, [1.4375])
+
+
+def test_fit_gradient_stops_early_when_objective_change_is_below_tol():
+    model = QuadraticModel(learning_rate=0.5, max_iter=10, tol=1.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert model.n_iter_ == 3
+    assert model.n_iter_ < model.max_iter
+    assert len(model.loss_history_) == 3
+    assert np.allclose(model.loss_history_, [3.0, 0.75, 0.1875])
+    assert np.allclose(model.coef_, [0.5, -0.25])
+    assert np.isclose(model.intercept_, 0.25)
+
+
+def test_fit_gradient_runs_all_iterations_when_tol_is_zero():
+    model = QuadraticModel(learning_rate=0.5, max_iter=10, tol=0.0)
+    model.coef_ = np.array([0.0, 0.0])
+    model.intercept_ = 0.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert model.n_iter_ == 10
+    assert len(model.loss_history_) == 10

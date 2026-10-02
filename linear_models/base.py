@@ -81,6 +81,11 @@ class BaseLinearModel(ABC):
             self.intercept_ = self.intercept_ - self.learning_rate * grad_b
             self.loss_history_.append(self._objective(X, y))
             self.n_iter_ = i + 1
+            if (
+                len(self.loss_history_) > 1
+                and abs(self.loss_history_[-2] - self.loss_history_[-1]) < self.tol
+            ):
+                break
         return self
 
     def _validate_params(self):
