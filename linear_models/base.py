@@ -67,6 +67,10 @@ class BaseLinearModel(ABC):
         if self.penalty == "l1":
             return self.alpha * np.sign(self.coef_)
 
+    def _objective(self, X, y):
+        """Полная цель J = потери на данных + штраф (число)."""
+        return self._loss(X, y) + self._penalty_loss()
+
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
             raise ValueError(

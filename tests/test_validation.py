@@ -218,3 +218,24 @@ def test_penalty_gradient(penalty, expected):
 
     assert result.shape == (2,)
     assert np.allclose(result, expected)
+
+
+class FixedLossModel(DummyModel):
+    def _loss(self, X, y):
+        return 2.5
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, 2.5), ("l2", 3.75), ("l1", 3.2)],
+)
+def test_objective_is_data_loss_plus_penalty(penalty, expected):
+    model = FixedLossModel(penalty=penalty, alpha=0.1)
+    model.coef_ = np.array([3.0, -4.0])
+    model.intercept_ = 100.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    result = model._objective(X, y)
+
+    assert np.isclose(result, expected)
