@@ -205,3 +205,16 @@ def _model_with_weights(penalty):
 def test_penalty_loss(penalty, expected):
     model = _model_with_weights(penalty)
     assert np.isclose(model._penalty_loss(), expected)
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, [0.0, 0.0]), ("l2", [0.3, -0.4]), ("l1", [0.1, -0.1])],
+)
+def test_penalty_gradient(penalty, expected):
+    model = _model_with_weights(penalty)
+
+    result = model._penalty_gradient()
+
+    assert result.shape == (2,)
+    assert np.allclose(result, expected)

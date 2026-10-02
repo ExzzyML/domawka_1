@@ -58,6 +58,15 @@ class BaseLinearModel(ABC):
         if self.penalty == "l1":
             return self.alpha * np.sum(np.abs(self.coef_))
 
+    def _penalty_gradient(self):
+        """Градиент штрафа по w (массив формы coef_). intercept_ не участвует."""
+        if self.penalty is None:
+            return np.zeros_like(self.coef_)
+        if self.penalty == "l2":
+            return self.alpha * self.coef_
+        if self.penalty == "l1":
+            return self.alpha * np.sign(self.coef_)
+
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
             raise ValueError(
