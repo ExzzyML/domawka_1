@@ -49,6 +49,15 @@ class BaseLinearModel(ABC):
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
 
+    def _penalty_loss(self):
+        """Штраф alpha * R(w) (число). intercept_ не участвует."""
+        if self.penalty is None:
+            return 0.0
+        if self.penalty == "l2":
+            return self.alpha * 0.5 * np.sum(self.coef_**2)
+        if self.penalty == "l1":
+            return self.alpha * np.sum(np.abs(self.coef_))
+
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
             raise ValueError(

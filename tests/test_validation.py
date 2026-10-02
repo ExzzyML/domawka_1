@@ -189,3 +189,19 @@ def test_predict_input_accepts_correct_input():
     model.intercept_ = 0.0
     X_out = model._validate_predict_input([[1, 2], [3, 4]])
     assert X_out.shape == (2, 2)
+
+
+def _model_with_weights(penalty):
+    model = DummyModel(penalty=penalty, alpha=0.1)
+    model.coef_ = np.array([3.0, -4.0])
+    model.intercept_ = 100.0
+    return model
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, 0.0), ("l2", 1.25), ("l1", 0.7)],
+)
+def test_penalty_loss(penalty, expected):
+    model = _model_with_weights(penalty)
+    assert np.isclose(model._penalty_loss(), expected)
