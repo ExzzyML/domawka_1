@@ -313,3 +313,18 @@ def test_fit_gradient_runs_all_iterations_when_tol_is_zero():
 
     assert model.n_iter_ == 10
     assert len(model.loss_history_) == 10
+
+
+def test_fit_gradient_keeps_intercept_when_fit_intercept_is_false():
+    model = QuadraticModel(fit_intercept=False, learning_rate=0.5, max_iter=1, tol=0.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert np.allclose(model.coef_, [2.0, -1.0])
+    assert model.intercept_ == 2.0
+    assert model.n_iter_ == 1
+    assert np.allclose(model.loss_history_, [4.5])

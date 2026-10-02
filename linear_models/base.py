@@ -78,7 +78,8 @@ class BaseLinearModel(ABC):
             grad_w, grad_b = self._gradient(X, y)
             grad_w = grad_w + self._penalty_gradient()
             self.coef_ = self.coef_ - self.learning_rate * grad_w
-            self.intercept_ = self.intercept_ - self.learning_rate * grad_b
+            if self.fit_intercept:
+                self.intercept_ = self.intercept_ - self.learning_rate * grad_b
             self.loss_history_.append(self._objective(X, y))
             self.n_iter_ = i + 1
             if (
