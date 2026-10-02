@@ -49,6 +49,46 @@ class BaseLinearModel(ABC):
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
 
+    def _penalty_loss(self):
+        """Штраф alpha * R(w) (число). intercept_ не участвует."""
+        if self.penalty is None:
+            return 0.0
+        if self.penalty == "l2":
+            return self.alpha * 0.5 * np.sum(self.coef_**2)
+        if self.penalty == "l1":
+            return self.alpha * np.sum(np.abs(self.coef_))
+
+    def _penalty_gradient(self):
+        """Градиент штрафа по w (массив формы coef_). intercept_ не участвует."""
+        if self.penalty is None:
+            return np.zeros_like(self.coef_)
+        if self.penalty == "l2":
+            return self.alpha * self.coef_
+        if self.penalty == "l1":
+            return self.alpha * np.sign(self.coef_)
+
+    def _objective(self, X, y):
+        """Полная цель J = потери на данных + штраф (число)."""
+        return self._loss(X, y) + self._penalty_loss()
+
+    def _fit_gradient(self, X, y):
+        """Градиентный спуск: обновляет coef_ и intercept_, ведёт историю."""
+        self.loss_history_ = []
+        for i in range(self.max_iter):
+            grad_w, grad_b = self._gradient(X, y)
+            grad_w = grad_w + self._penalty_gradient()
+            self.coef_ = self.coef_ - self.learning_rate * grad_w
+            if self.fit_intercept:
+                self.intercept_ = self.intercept_ - self.learning_rate * grad_b
+            self.loss_history_.append(self._objective(X, y))
+            self.n_iter_ = i + 1
+            if (
+                len(self.loss_history_) > 1
+                and abs(self.loss_history_[-2] - self.loss_history_[-1]) < self.tol
+            ):
+                break
+        return self
+
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
             raise ValueError(

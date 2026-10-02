@@ -189,3 +189,142 @@ def test_predict_input_accepts_correct_input():
     model.intercept_ = 0.0
     X_out = model._validate_predict_input([[1, 2], [3, 4]])
     assert X_out.shape == (2, 2)
+
+
+def _model_with_weights(penalty):
+    model = DummyModel(penalty=penalty, alpha=0.1)
+    model.coef_ = np.array([3.0, -4.0])
+    model.intercept_ = 100.0
+    return model
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, 0.0), ("l2", 1.25), ("l1", 0.7)],
+)
+def test_penalty_loss(penalty, expected):
+    model = _model_with_weights(penalty)
+    assert np.isclose(model._penalty_loss(), expected)
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, [0.0, 0.0]), ("l2", [0.3, -0.4]), ("l1", [0.1, -0.1])],
+)
+def test_penalty_gradient(penalty, expected):
+    model = _model_with_weights(penalty)
+
+    result = model._penalty_gradient()
+
+    assert result.shape == (2,)
+    assert np.allclose(result, expected)
+
+
+class FixedLossModel(DummyModel):
+    def _loss(self, X, y):
+        return 2.5
+
+
+@pytest.mark.parametrize(
+    "penalty, expected",
+    [(None, 2.5), ("l2", 3.75), ("l1", 3.2)],
+)
+def test_objective_is_data_loss_plus_penalty(penalty, expected):
+    model = FixedLossModel(penalty=penalty, alpha=0.1)
+    model.coef_ = np.array([3.0, -4.0])
+    model.intercept_ = 100.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    result = model._objective(X, y)
+
+    assert np.isclose(result, expected)
+
+
+class QuadraticModel(DummyModel):
+    """L(w, b) = 0.5 * sum(w**2) + 0.5 * b**2, градиент (w, b)."""
+
+    def _loss(self, X, y):
+        return 0.5 * np.sum(self.coef_**2) + 0.5 * self.intercept_**2
+
+    def _gradient(self, X, y):
+        return self.coef_.copy(), self.intercept_
+
+
+def test_fit_gradient_follows_descent_steps():
+    model = QuadraticModel(learning_rate=0.5, max_iter=3, tol=0.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert np.allclose(model.coef_, [0.5, -0.25])
+    assert np.isclose(model.intercept_, 0.25)
+    assert model.n_iter_ == 3
+    assert len(model.loss_history_) == 3
+    assert np.allclose(model.loss_history_, [3.0, 0.75, 0.1875])
+
+
+def test_fit_gradient_includes_penalty_gradient():
+    model = QuadraticModel(
+        penalty="l2", alpha=0.5, learning_rate=0.5, max_iter=1, tol=0.0
+    )
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert np.allclose(model.coef_, [1.0, -0.5])
+    assert np.isclose(model.intercept_, 1.0)
+    assert model.n_iter_ == 1
+    assert len(model.loss_history_) == 1
+    assert np.allclose(model.loss_history_, [1.4375])
+
+
+def test_fit_gradient_stops_early_when_objective_change_is_below_tol():
+    model = QuadraticModel(learning_rate=0.5, max_iter=10, tol=1.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert model.n_iter_ == 3
+    assert model.n_iter_ < model.max_iter
+    assert len(model.loss_history_) == 3
+    assert np.allclose(model.loss_history_, [3.0, 0.75, 0.1875])
+    assert np.allclose(model.coef_, [0.5, -0.25])
+    assert np.isclose(model.intercept_, 0.25)
+
+
+def test_fit_gradient_runs_all_iterations_when_tol_is_zero():
+    model = QuadraticModel(learning_rate=0.5, max_iter=10, tol=0.0)
+    model.coef_ = np.array([0.0, 0.0])
+    model.intercept_ = 0.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert model.n_iter_ == 10
+    assert len(model.loss_history_) == 10
+
+
+def test_fit_gradient_keeps_intercept_when_fit_intercept_is_false():
+    model = QuadraticModel(fit_intercept=False, learning_rate=0.5, max_iter=1, tol=0.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+
+    model._fit_gradient(X, y)
+
+    assert np.allclose(model.coef_, [2.0, -1.0])
+    assert model.intercept_ == 2.0
+    assert model.n_iter_ == 1
+    assert np.allclose(model.loss_history_, [4.5])
