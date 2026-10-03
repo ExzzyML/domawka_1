@@ -6,11 +6,19 @@ from linear_models.base import BaseLinearModel
 class LinearRegression(BaseLinearModel):
     def fit(self, X, y):
         self._validate_params()
+        self._validate_solver_penalty()
         X, y = self._validate_X_y(X, y)
         self.coef_ = np.zeros(X.shape[1])
         self.intercept_ = 0.0
         self._fit_gradient(X, y)
         return self
+
+    def _validate_solver_penalty(self):
+        if self.solver == "analytic" and self.penalty not in (None, "l2"):
+            raise ValueError(
+                f"solver='analytic' supports only penalty None or 'l2', "
+                f"got {self.penalty!r}"
+            )
 
     def predict(self, X):
         X = self._validate_predict_input(X)

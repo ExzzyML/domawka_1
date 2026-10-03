@@ -133,3 +133,12 @@ def test_fit_validates_params():
 
     with pytest.raises(ValueError, match="solver"):
         model.fit(X, y)
+
+
+def test_fit_rejects_analytic_solver_with_l1():
+    model = LinearRegression(solver="analytic", penalty="l1")
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 3.0])
+
+    with pytest.raises(ValueError, match="analytic"):
+        model.fit(X, y)
