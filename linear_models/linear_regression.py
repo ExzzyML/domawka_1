@@ -26,12 +26,16 @@ class LinearRegression(BaseLinearModel):
         X = self._validate_predict_input(X)
         return self._linear_output(X)
 
-    def _loss(self, X, y):
+    def _residual(self, X, y):
         residual = self._linear_output(X) - y
+        return residual
+
+    def _loss(self, X, y):
+        residual = self._residual(X, y)
         return np.sum(residual**2) / (2 * X.shape[0])
 
     def _gradient(self, X, y):
-        residual = self._linear_output(X) - y
+        residual = self._residual(X, y)
         n = X.shape[0]
         grad_w = (X.T @ residual) / n
         grad_b = np.sum(residual) / n

@@ -195,3 +195,16 @@ def test_fit_analytic_solver_not_implemented_yet():
 
     with pytest.raises(NotImplementedError, match="analytic"):
         model.fit(X, y)
+
+
+def test_residual_is_prediction_minus_target():
+    model = LinearRegression()
+    model.coef_ = np.array([1.0, -1.0])
+    model.intercept_ = 0.5
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([1.0, 2.0])
+
+    result = model._residual(X, y)
+
+    assert result.shape == (2,)
+    assert np.allclose(result, [-1.5, -2.5])
