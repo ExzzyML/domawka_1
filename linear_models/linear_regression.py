@@ -5,7 +5,11 @@ from linear_models.base import BaseLinearModel
 
 class LinearRegression(BaseLinearModel):
     def fit(self, X, y):
-        raise NotImplementedError  # появится в 4e
+        X, y = self._validate_X_y(X, y)
+        self.coef_ = np.zeros(X.shape[1])
+        self.intercept_ = 0.0
+        self._fit_gradient(X, y)
+        return self
 
     def predict(self, X):
         X = self._validate_predict_input(X)

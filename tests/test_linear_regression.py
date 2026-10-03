@@ -97,3 +97,15 @@ def test_predict_requires_fitted_model():
     model = LinearRegression()
     with pytest.raises(NotFittedError):
         model.predict([[1.0, 2.0]])
+
+
+def test_fit_returns_self_and_creates_weights():
+    model = LinearRegression(max_iter=1)
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    y = np.array([1.0, 2.0, 3.0])
+
+    result = model.fit(X, y)
+
+    assert result is model
+    assert model.coef_.shape == (2,)
+    assert np.isscalar(model.intercept_)
