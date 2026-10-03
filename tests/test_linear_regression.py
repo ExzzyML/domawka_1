@@ -124,3 +124,12 @@ def test_fit_recovers_line_without_penalty():
     assert len(model.loss_history_) == 5000
     assert np.isclose(model.loss_history_[0], 1.245)
     assert model.loss_history_[-1] < 1e-8
+
+
+def test_fit_validates_params():
+    model = LinearRegression(solver="banana")
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 3.0])
+
+    with pytest.raises(ValueError, match="solver"):
+        model.fit(X, y)
