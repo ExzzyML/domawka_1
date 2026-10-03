@@ -186,3 +186,12 @@ def test_fit_l1_shrinks_weights_by_constant_amount():
     assert np.isclose(model.intercept_, -0.5, atol=1e-4)
     assert np.isclose(model.loss_history_[0], 1.745)
     assert np.isclose(model.loss_history_[-1], 0.9375)
+
+
+def test_fit_analytic_solver_not_implemented_yet():
+    model = LinearRegression(solver="analytic")
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 3.0])
+
+    with pytest.raises(NotImplementedError, match="analytic"):
+        model.fit(X, y)
