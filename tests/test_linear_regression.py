@@ -25,3 +25,17 @@ def test_loss_uses_weights_and_intercept():
     result = model._loss(X, y)
 
     assert np.isclose(result, 2.125)
+
+
+def test_gradient_returns_pair_with_expected_values():
+    model = LinearRegression()
+    model.coef_ = np.array([0.0])
+    model.intercept_ = 0.0
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 3.0])
+
+    grad_w, grad_b = model._gradient(X, y)
+
+    assert grad_w.shape == (1,)
+    assert np.allclose(grad_w, [-3.5])
+    assert np.isclose(grad_b, -2.0)
