@@ -109,3 +109,18 @@ def test_fit_returns_self_and_creates_weights():
     assert result is model
     assert model.coef_.shape == (2,)
     assert np.isscalar(model.intercept_)
+
+
+def test_fit_recovers_line_without_penalty():
+    X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0]])
+    y = 2.0 * X[:, 0] - 1.0
+    model = LinearRegression(learning_rate=0.1, max_iter=5000, tol=0.0)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [2.0], atol=1e-4)
+    assert np.isclose(model.intercept_, -1.0, atol=1e-4)
+    assert model.n_iter_ == 5000
+    assert len(model.loss_history_) == 5000
+    assert np.isclose(model.loss_history_[0], 1.245)
+    assert model.loss_history_[-1] < 1e-8
