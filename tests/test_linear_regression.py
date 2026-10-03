@@ -171,3 +171,18 @@ def test_fit_l2_shrinks_weights_to_ridge_solution():
     assert np.isclose(model.intercept_, -0.2, atol=1e-4)
     assert np.isclose(model.loss_history_[0], 1.495)
     assert np.isclose(model.loss_history_[-1], 0.8)
+
+
+def test_fit_l1_shrinks_weights_by_constant_amount():
+    X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0]])
+    y = 2.0 * X[:, 0] - 1.0
+    model = LinearRegression(
+        penalty="l1", alpha=0.5, learning_rate=0.1, max_iter=5000, tol=0.0
+    )
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [1.75], atol=1e-4)
+    assert np.isclose(model.intercept_, -0.5, atol=1e-4)
+    assert np.isclose(model.loss_history_[0], 1.745)
+    assert np.isclose(model.loss_history_[-1], 0.9375)
