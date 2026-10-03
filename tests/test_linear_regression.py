@@ -142,3 +142,17 @@ def test_fit_rejects_analytic_solver_with_l1():
 
     with pytest.raises(ValueError, match="analytic"):
         model.fit(X, y)
+
+
+def test_fit_without_intercept_keeps_intercept_zero():
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    y = 2.0 * X[:, 0] + 1.0
+    model = LinearRegression(
+        fit_intercept=False, learning_rate=0.05, max_iter=2000, tol=0.0
+    )
+
+    model.fit(X, y)
+
+    assert model.intercept_ == 0.0
+    assert np.allclose(model.coef_, [7 / 3], atol=1e-4)
+    assert np.isclose(model.loss_history_[0], 8.05859375)
