@@ -1,5 +1,7 @@
 import numpy as np
+import pytest
 
+from linear_models.base import NotFittedError
 from linear_models.linear_regression import LinearRegression
 
 
@@ -77,3 +79,21 @@ def test_gradient_matches_numerical_gradient():
 
     assert np.allclose(grad_w, num_grad_w, atol=1e-6)
     assert np.isclose(grad_b, num_grad_b, atol=1e-6)
+
+
+def test_predict_returns_linear_output():
+    model = LinearRegression()
+    model.coef_ = np.array([2.0, -1.0])
+    model.intercept_ = 0.5
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    result = model.predict(X)
+
+    assert result.shape == (2,)
+    assert np.allclose(result, [0.5, 2.5])
+
+
+def test_predict_requires_fitted_model():
+    model = LinearRegression()
+    with pytest.raises(NotFittedError):
+        model.predict([[1.0, 2.0]])

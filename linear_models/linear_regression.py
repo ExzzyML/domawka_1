@@ -8,7 +8,8 @@ class LinearRegression(BaseLinearModel):
         raise NotImplementedError  # появится в 4e
 
     def predict(self, X):
-        raise NotImplementedError  # появится в 4d
+        X = self._validate_predict_input(X)
+        return self._linear_output(X)
 
     def _loss(self, X, y):
         residual = self._linear_output(X) - y
