@@ -188,13 +188,15 @@ def test_fit_l1_shrinks_weights_by_constant_amount():
     assert np.isclose(model.loss_history_[-1], 0.9375)
 
 
-def test_fit_analytic_solver_not_implemented_yet():
-    model = LinearRegression(solver="analytic")
+def test_fit_analytic_matches_normal_equation_without_intercept():
     X = np.array([[1.0], [2.0]])
     y = np.array([1.0, 3.0])
+    model = LinearRegression(solver="analytic", fit_intercept=False)
 
-    with pytest.raises(NotImplementedError, match="analytic"):
-        model.fit(X, y)
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [1.4])
+    assert model.intercept_ == 0.0
 
 
 def test_residual_is_prediction_minus_target():
