@@ -7,13 +7,37 @@ class LinearRegression(BaseLinearModel):
     def fit(self, X, y):
         self._validate_params()
         self._validate_solver_penalty()
-        if self.solver == "analytic":
-            raise NotImplementedError("solver='analytic' is not implemented yet")
         X, y = self._validate_X_y(X, y)
+        if self.solver == "analytic":
+            self._fit_analytic(X, y)
+            return self
         self.coef_ = np.zeros(X.shape[1])
         self.intercept_ = 0.0
         self._fit_gradient(X, y)
         return self
+
+    def _fit_analytic(self, X, y):
+        if self.fit_intercept:
+            x_mean = X.mean(axis=0)
+            y_mean = y.mean()
+            Xc = X - x_mean
+            yc = y - y_mean
+        else:
+            Xc, yc = X, y
+        if self.penalty == "l2":
+            n = X.shape[0]
+            d = Xc.shape[1]
+            penalty_rows = np.sqrt(n * self.alpha) * np.eye(d)
+            Xc = np.vstack([Xc, penalty_rows])
+            yc = np.concatenate([yc, np.zeros(d)])
+        coef, *_ = np.linalg.lstsq(Xc, yc, rcond=None)
+        self.coef_ = coef
+        if self.fit_intercept:
+            self.intercept_ = y_mean - x_mean @ coef
+        else:
+            self.intercept_ = 0.0
+        self.n_iter_ = 1
+        self.loss_history_ = [self._objective(X, y)]
 
     def _validate_solver_penalty(self):
         if self.solver == "analytic" and self.penalty not in (None, "l2"):

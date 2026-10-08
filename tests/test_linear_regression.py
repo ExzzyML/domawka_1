@@ -188,13 +188,15 @@ def test_fit_l1_shrinks_weights_by_constant_amount():
     assert np.isclose(model.loss_history_[-1], 0.9375)
 
 
-def test_fit_analytic_solver_not_implemented_yet():
-    model = LinearRegression(solver="analytic")
+def test_fit_analytic_matches_normal_equation_without_intercept():
     X = np.array([[1.0], [2.0]])
     y = np.array([1.0, 3.0])
+    model = LinearRegression(solver="analytic", fit_intercept=False)
 
-    with pytest.raises(NotImplementedError, match="analytic"):
-        model.fit(X, y)
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [1.4])
+    assert model.intercept_ == 0.0
 
 
 def test_residual_is_prediction_minus_target():
@@ -208,3 +210,65 @@ def test_residual_is_prediction_minus_target():
 
     assert result.shape == (2,)
     assert np.allclose(result, [-1.5, -2.5])
+
+
+def test_fit_analytic_with_intercept_centers_data():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", fit_intercept=True)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [3.5])
+    assert np.isclose(model.intercept_, -2.0)
+
+
+def test_fit_analytic_l2_shrinks_weight_not_intercept():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", penalty="l2", alpha=0.5)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [2.0])
+    assert np.isclose(model.intercept_, 1.0)
+
+
+def test_fit_analytic_duplicate_columns_gives_minimum_norm_solution():
+    X = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
+    y = np.array([2.0, 4.0, 6.0])
+    model = LinearRegression(solver="analytic")
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [1.0, 1.0])
+    assert np.isclose(model.intercept_, 0.0)
+    assert np.allclose(model.predict(X), y)
+
+
+def test_fit_analytic_sets_n_iter_and_loss_history():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", penalty="l2", alpha=0.5)
+
+    model.fit(X, y)
+
+    assert model.n_iter_ == 1
+    assert np.allclose(model.loss_history_, [2.0])
+
+
+def test_analytic_and_gradient_solvers_agree():
+    X = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]])
+    y = np.array([3.0, 3.0, 8.0, 7.0])
+    analytic = LinearRegression(solver="analytic")
+    gradient = LinearRegression(
+        solver="gradient", learning_rate=0.1, max_iter=2000, tol=0.0
+    )
+
+    analytic.fit(X, y)
+    gradient.fit(X, y)
+
+    assert np.allclose(analytic.coef_, [0.875, 1.375])
+    assert np.isclose(analytic.intercept_, -0.375)
+    assert np.allclose(gradient.coef_, analytic.coef_, atol=1e-6)
+    assert np.isclose(gradient.intercept_, analytic.intercept_, atol=1e-6)
