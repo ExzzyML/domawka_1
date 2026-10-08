@@ -36,6 +36,8 @@ class LinearRegression(BaseLinearModel):
             self.intercept_ = y_mean - x_mean @ coef
         else:
             self.intercept_ = 0.0
+        self.n_iter_ = 1
+        self.loss_history_ = [self._objective(X, y)]
 
     def _validate_solver_penalty(self):
         if self.solver == "analytic" and self.penalty not in (None, "l2"):

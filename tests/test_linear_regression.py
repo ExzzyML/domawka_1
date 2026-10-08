@@ -244,3 +244,14 @@ def test_fit_analytic_duplicate_columns_gives_minimum_norm_solution():
     assert np.allclose(model.coef_, [1.0, 1.0])
     assert np.isclose(model.intercept_, 0.0)
     assert np.allclose(model.predict(X), y)
+
+
+def test_fit_analytic_sets_n_iter_and_loss_history():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", penalty="l2", alpha=0.5)
+
+    model.fit(X, y)
+
+    assert model.n_iter_ == 1
+    assert np.allclose(model.loss_history_, [2.0])
