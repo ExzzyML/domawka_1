@@ -24,6 +24,12 @@ class LinearRegression(BaseLinearModel):
             yc = y - y_mean
         else:
             Xc, yc = X, y
+        if self.penalty == "l2":
+            n = X.shape[0]
+            d = Xc.shape[1]
+            penalty_rows = np.sqrt(n * self.alpha) * np.eye(d)
+            Xc = np.vstack([Xc, penalty_rows])
+            yc = np.concatenate([yc, np.zeros(d)])
         coef, *_ = np.linalg.lstsq(Xc, yc, rcond=None)
         self.coef_ = coef
         if self.fit_intercept:

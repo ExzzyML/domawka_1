@@ -221,3 +221,14 @@ def test_fit_analytic_with_intercept_centers_data():
 
     assert np.allclose(model.coef_, [3.5])
     assert np.isclose(model.intercept_, -2.0)
+
+
+def test_fit_analytic_l2_shrinks_weight_not_intercept():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", penalty="l2", alpha=0.5)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [2.0])
+    assert np.isclose(model.intercept_, 1.0)
