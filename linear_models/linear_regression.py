@@ -17,9 +17,19 @@ class LinearRegression(BaseLinearModel):
         return self
 
     def _fit_analytic(self, X, y):
-        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+        if self.fit_intercept:
+            x_mean = X.mean(axis=0)
+            y_mean = y.mean()
+            Xc = X - x_mean
+            yc = y - y_mean
+        else:
+            Xc, yc = X, y
+        coef, *_ = np.linalg.lstsq(Xc, yc, rcond=None)
         self.coef_ = coef
-        self.intercept_ = 0.0
+        if self.fit_intercept:
+            self.intercept_ = y_mean - x_mean @ coef
+        else:
+            self.intercept_ = 0.0
 
     def _validate_solver_penalty(self):
         if self.solver == "analytic" and self.penalty not in (None, "l2"):

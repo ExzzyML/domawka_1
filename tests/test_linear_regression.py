@@ -210,3 +210,14 @@ def test_residual_is_prediction_minus_target():
 
     assert result.shape == (2,)
     assert np.allclose(result, [-1.5, -2.5])
+
+
+def test_fit_analytic_with_intercept_centers_data():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 9.0])
+    model = LinearRegression(solver="analytic", fit_intercept=True)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [3.5])
+    assert np.isclose(model.intercept_, -2.0)
