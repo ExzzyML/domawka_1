@@ -232,3 +232,15 @@ def test_fit_analytic_l2_shrinks_weight_not_intercept():
 
     assert np.allclose(model.coef_, [2.0])
     assert np.isclose(model.intercept_, 1.0)
+
+
+def test_fit_analytic_duplicate_columns_gives_minimum_norm_solution():
+    X = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
+    y = np.array([2.0, 4.0, 6.0])
+    model = LinearRegression(solver="analytic")
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, [1.0, 1.0])
+    assert np.isclose(model.intercept_, 0.0)
+    assert np.allclose(model.predict(X), y)
