@@ -255,3 +255,20 @@ def test_fit_analytic_sets_n_iter_and_loss_history():
 
     assert model.n_iter_ == 1
     assert np.allclose(model.loss_history_, [2.0])
+
+
+def test_analytic_and_gradient_solvers_agree():
+    X = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]])
+    y = np.array([3.0, 3.0, 8.0, 7.0])
+    analytic = LinearRegression(solver="analytic")
+    gradient = LinearRegression(
+        solver="gradient", learning_rate=0.1, max_iter=2000, tol=0.0
+    )
+
+    analytic.fit(X, y)
+    gradient.fit(X, y)
+
+    assert np.allclose(analytic.coef_, [0.875, 1.375])
+    assert np.isclose(analytic.intercept_, -0.375)
+    assert np.allclose(gradient.coef_, analytic.coef_, atol=1e-6)
+    assert np.isclose(gradient.intercept_, analytic.intercept_, atol=1e-6)
