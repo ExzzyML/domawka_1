@@ -31,3 +31,29 @@ def test_loss_is_mean_log_loss():
     result = model._loss(X, y)
 
     assert np.isclose(result, 1.2200948)
+
+
+def test_loss_extreme_wrong_predictions_equals_margin():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[-1000.0], [1000.0]])
+    y = np.array([1.0, 0.0])
+
+    with np.errstate(divide="raise", over="raise", invalid="raise"):
+        result = model._loss(X, y)
+
+    assert np.isclose(result, 1000.0)
+
+
+def test_loss_extreme_correct_predictions_is_zero():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[-1000.0], [1000.0]])
+    y = np.array([0.0, 1.0])
+
+    with np.errstate(divide="raise", over="raise", invalid="raise"):
+        result = model._loss(X, y)
+
+    assert np.isclose(result, 0.0)
