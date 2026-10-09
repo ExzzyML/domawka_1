@@ -125,3 +125,15 @@ def test_analytic_solver_is_not_supported():
 
 def test_default_solver_is_valid():
     assert LogisticRegression()._validate_solver() is None
+
+
+def test_fit_returns_self_and_creates_weights():
+    model = LogisticRegression(max_iter=1)
+    X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    y = np.array([0.0, 1.0, 1.0])
+
+    result = model.fit(X, y)
+
+    assert result is model
+    assert model.coef_.shape == (2,)
+    assert np.isscalar(model.intercept_)

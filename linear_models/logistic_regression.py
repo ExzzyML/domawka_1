@@ -16,8 +16,11 @@ def _sigmoid(z):
 
 class LogisticRegression(BaseLinearModel):
     def fit(self, X, y):
-        # TODO: будет в следующих шагах
-        raise NotImplementedError
+        X, y = self._validate_X_y(X, y)
+        self.coef_ = np.zeros(X.shape[1])
+        self.intercept_ = 0.0
+        self._fit_gradient(X, y)
+        return self
 
     def predict(self, X):
         # TODO: будет в следующих шагах
