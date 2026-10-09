@@ -57,3 +57,17 @@ def test_loss_extreme_correct_predictions_is_zero():
         result = model._loss(X, y)
 
     assert np.isclose(result, 0.0)
+
+
+def test_gradient_returns_pair_with_expected_values():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 0.0])
+
+    grad_w, grad_b = model._gradient(X, y)
+
+    assert grad_w.shape == (1,)
+    assert np.isclose(grad_w[0], 0.7463264)
+    assert np.isclose(grad_b, 0.3059278)

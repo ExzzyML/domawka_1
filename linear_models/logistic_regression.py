@@ -28,5 +28,8 @@ class LogisticRegression(BaseLinearModel):
         return np.mean(np.logaddexp(0, z) - y * z)
 
     def _gradient(self, X, y):
-        # TODO: будет в следующих шагах
-        raise NotImplementedError
+        residual = _sigmoid(self._linear_output(X)) - y
+        n = X.shape[0]
+        grad_w = (X.T @ residual) / n
+        grad_b = np.sum(residual) / n
+        return grad_w, grad_b
