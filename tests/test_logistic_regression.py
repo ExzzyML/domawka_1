@@ -115,3 +115,13 @@ def test_validate_binary_y_rejects_single_class(bad_y):
 def test_validate_binary_y_accepts_both_classes():
     model = LogisticRegression()
     assert model._validate_binary_y(np.array([0.0, 1.0, 1.0, 0.0])) is None
+
+
+def test_analytic_solver_is_not_supported():
+    model = LogisticRegression(solver="analytic")
+    with pytest.raises(ValueError, match="only solver='gradient'"):
+        model._validate_solver()
+
+
+def test_default_solver_is_valid():
+    assert LogisticRegression()._validate_solver() is None

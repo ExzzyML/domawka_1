@@ -29,6 +29,13 @@ class LogisticRegression(BaseLinearModel):
         if np.unique(y).size < 2:
             raise ValueError("y must contain both classes 0 and 1")
 
+    def _validate_solver(self):
+        if self.solver != "gradient":
+            raise ValueError(
+                f"LogisticRegression supports only solver='gradient', "
+                f"got {self.solver!r}"
+            )
+
     def _loss(self, X, y):
         z = self._linear_output(X)
         return np.mean(np.logaddexp(0, z) - y * z)
