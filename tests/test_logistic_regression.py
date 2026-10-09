@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from linear_models.logistic_regression import LogisticRegression, _sigmoid
 from tests.helpers import numerical_gradient
@@ -87,3 +88,30 @@ def test_gradient_matches_numerical_gradient():
 
     assert np.allclose(grad_w, num_grad_w, atol=1e-6)
     assert np.isclose(grad_b, num_grad_b, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "bad_y",
+    [
+        [0.0, 2.0, 1.0],
+        [-1.0, 1.0, 1.0],
+        [0.0, 0.5, 1.0],
+        [0.0, float("nan"), 1.0],
+    ],
+)
+def test_validate_binary_y_rejects_non_binary_values(bad_y):
+    model = LogisticRegression()
+    with pytest.raises(ValueError, match="only 0 and 1"):
+        model._validate_binary_y(np.array(bad_y))
+
+
+@pytest.mark.parametrize("bad_y", [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+def test_validate_binary_y_rejects_single_class(bad_y):
+    model = LogisticRegression()
+    with pytest.raises(ValueError, match="both classes"):
+        model._validate_binary_y(np.array(bad_y))
+
+
+def test_validate_binary_y_accepts_both_classes():
+    model = LogisticRegression()
+    assert model._validate_binary_y(np.array([0.0, 1.0, 1.0, 0.0])) is None

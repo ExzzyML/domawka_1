@@ -23,6 +23,12 @@ class LogisticRegression(BaseLinearModel):
         # TODO: будет в следующих шагах
         raise NotImplementedError
 
+    def _validate_binary_y(self, y):
+        if not np.all((y == 0) | (y == 1)):
+            raise ValueError(f"y must contain only 0 and 1, got values {np.unique(y)}")
+        if np.unique(y).size < 2:
+            raise ValueError("y must contain both classes 0 and 1")
+
     def _loss(self, X, y):
         z = self._linear_output(X)
         return np.mean(np.logaddexp(0, z) - y * z)
