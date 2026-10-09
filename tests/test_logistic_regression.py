@@ -1,6 +1,6 @@
 import numpy as np
 
-from linear_models.logistic_regression import _sigmoid
+from linear_models.logistic_regression import LogisticRegression, _sigmoid
 
 
 def test_sigmoid_known_values():
@@ -19,3 +19,15 @@ def test_sigmoid_extreme_values_no_overflow():
         result = _sigmoid(z)
 
     assert np.allclose(result, [0.0, 1.0])
+
+
+def test_loss_is_mean_log_loss():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 0.0])
+
+    result = model._loss(X, y)
+
+    assert np.isclose(result, 1.2200948)
