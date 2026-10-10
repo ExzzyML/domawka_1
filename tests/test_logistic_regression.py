@@ -200,3 +200,13 @@ def test_threshold_and_base_params_can_be_set():
 
     assert model.threshold == 0.3
     assert model.alpha == 0.1
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [-0.1, 1.5, "0.5", None, True, float("nan"), float("inf")],
+)
+def test_invalid_threshold_raises(bad_value):
+    model = LogisticRegression(threshold=bad_value)
+    with pytest.raises(ValueError, match="threshold"):
+        model._validate_params()

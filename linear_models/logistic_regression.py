@@ -1,6 +1,6 @@
 import numpy as np
 
-from linear_models.base import BaseLinearModel
+from linear_models.base import BaseLinearModel, _is_number
 
 
 def _sigmoid(z):
@@ -18,6 +18,13 @@ class LogisticRegression(BaseLinearModel):
     def __init__(self, threshold=0.5, **kwargs):
         super().__init__(**kwargs)
         self.threshold = threshold
+
+    def _validate_params(self):
+        super()._validate_params()
+        if not _is_number(self.threshold) or not 0 <= self.threshold <= 1:
+            raise ValueError(
+                f"threshold must be a number between 0 and 1, got {self.threshold!r}"
+            )
 
     def fit(self, X, y):
         self._validate_params()
