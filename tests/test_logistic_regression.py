@@ -146,3 +146,12 @@ def test_fit_validates_params():
 
     with pytest.raises(ValueError, match="solver"):
         model.fit(X, y)
+
+
+def test_fit_rejects_analytic_solver():
+    model = LogisticRegression(solver="analytic")
+    X = np.array([[1.0], [2.0]])
+    y = np.array([0.0, 1.0])
+
+    with pytest.raises(ValueError, match="only solver='gradient'"):
+        model.fit(X, y)
