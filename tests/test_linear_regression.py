@@ -264,3 +264,14 @@ def test_fit_stops_early_when_loss_change_is_below_tol():
     assert len(model.loss_history_) == model.n_iter_
     assert changes[-1] < 1e-6
     assert np.all(changes[:-1] >= 1e-6)
+
+
+def test_fit_rejects_mismatched_x_and_y_and_stays_unfitted():
+    model = LinearRegression()
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([1.0, 2.0])
+
+    with pytest.raises(ValueError, match="samples"):
+        model.fit(X, y)
+
+    assert not hasattr(model, "coef_")
