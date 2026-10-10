@@ -362,3 +362,29 @@ def test_l2_penalty_does_not_regularize_intercept():
 
     assert abs(model.coef_[0]) < 0.1
     assert model.intercept_ > 1.0
+
+
+def test_fit_without_intercept_keeps_intercept_zero():
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    y = np.array([0, 0, 1, 1])
+    with_b = LogisticRegression(learning_rate=0.5, max_iter=200).fit(X, y)
+    no_b = LogisticRegression(learning_rate=0.5, max_iter=200, fit_intercept=False).fit(
+        X, y
+    )
+
+    assert abs(with_b.intercept_) > 0.1
+    assert no_b.intercept_ == 0.0
+
+
+def test_refit_starts_from_zero_weights():
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    y_first = np.array([0, 0, 1, 1])
+    y_second = np.array([1, 1, 0, 0])
+    fresh = LogisticRegression(learning_rate=0.5, max_iter=50).fit(X, y_second)
+    model = LogisticRegression(learning_rate=0.5, max_iter=50)
+
+    model.fit(X, y_first)
+    model.fit(X, y_second)
+
+    assert np.allclose(model.coef_, fresh.coef_)
+    assert np.isclose(model.intercept_, fresh.intercept_)
