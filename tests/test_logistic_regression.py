@@ -342,3 +342,23 @@ def test_fit_separates_linearly_separable_data():
     assert np.array_equal(model.predict(X), y)
 
 
+def test_l2_penalty_shrinks_weights():
+    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    plain = LogisticRegression(learning_rate=0.5, max_iter=200).fit(X, y)
+    ridge = LogisticRegression(
+        learning_rate=0.5, max_iter=200, penalty="l2", alpha=0.1
+    ).fit(X, y)
+
+    assert np.linalg.norm(ridge.coef_) < 0.5 * np.linalg.norm(plain.coef_)
+
+
+def test_l2_penalty_does_not_regularize_intercept():
+    X = np.array([[-2.0], [-1.0], [0.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 1, 1, 1, 1, 1])
+    model = LogisticRegression(
+        learning_rate=0.05, max_iter=5000, penalty="l2", alpha=10.0
+    ).fit(X, y)
+
+    assert abs(model.coef_[0]) < 0.1
+    assert model.intercept_ > 1.0
