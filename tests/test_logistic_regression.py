@@ -476,3 +476,24 @@ def test_default_params_and_no_weights_before_fit():
         "random_state": None,
         "threshold": 0.5,
     }
+
+
+@pytest.mark.parametrize(
+    "penalty, alpha, expected",
+    [
+        (None, 0.0, 0.65001),
+        ("l2", 2.0, 0.71251),
+        ("l1", 2.0, 1.15001),
+    ],
+)
+def test_first_loss_history_value_includes_penalty(penalty, alpha, expected):
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 0.0])
+    model = LogisticRegression(
+        learning_rate=1.0, max_iter=1, penalty=penalty, alpha=alpha
+    )
+
+    model.fit(X, y)
+
+    assert len(model.loss_history_) == 1
+    assert np.isclose(model.loss_history_[0], expected, atol=1e-5)
