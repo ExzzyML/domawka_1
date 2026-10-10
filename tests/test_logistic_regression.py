@@ -301,3 +301,19 @@ def test_predict_probability_equal_to_threshold_gives_class_zero():
     pred = model.predict(X)
 
     assert np.array_equal(pred, [0, 0])
+
+
+def test_predict_before_fit_raises():
+    model = LogisticRegression()
+
+    with pytest.raises(NotFittedError, match="not fitted"):
+        model.predict(np.array([[1.0]]))
+
+
+def test_predict_rejects_wrong_n_features():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0, 2.0])
+    model.intercept_ = 0.0
+
+    with pytest.raises(ValueError, match="features"):
+        model.predict(np.array([[1.0], [2.0]]))
