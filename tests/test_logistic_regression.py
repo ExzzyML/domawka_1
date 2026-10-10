@@ -189,3 +189,14 @@ def test_fit_accepts_bool_and_int_labels(y_values):
     assert reference.coef_[0] > 0
     assert np.allclose(model.coef_, reference.coef_)
     assert np.isclose(model.intercept_, reference.intercept_)
+
+
+def test_threshold_default_is_half():
+    assert LogisticRegression().threshold == 0.5
+
+
+def test_threshold_and_base_params_can_be_set():
+    model = LogisticRegression(threshold=0.3, alpha=0.1)
+
+    assert model.threshold == 0.3
+    assert model.alpha == 0.1

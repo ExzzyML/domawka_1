@@ -15,6 +15,10 @@ def _sigmoid(z):
 
 
 class LogisticRegression(BaseLinearModel):
+    def __init__(self, threshold=0.5, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+
     def fit(self, X, y):
         self._validate_params()
         self._validate_solver()
