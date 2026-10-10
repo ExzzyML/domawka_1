@@ -16,6 +16,7 @@ def _sigmoid(z):
 
 class LogisticRegression(BaseLinearModel):
     def fit(self, X, y):
+        self._validate_params()
         X, y = self._validate_X_y(X, y)
         self.coef_ = np.zeros(X.shape[1])
         self.intercept_ = 0.0

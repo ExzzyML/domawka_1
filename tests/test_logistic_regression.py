@@ -137,3 +137,12 @@ def test_fit_returns_self_and_creates_weights():
     assert result is model
     assert model.coef_.shape == (2,)
     assert np.isscalar(model.intercept_)
+
+
+def test_fit_validates_params():
+    model = LogisticRegression(solver="banana")
+    X = np.array([[1.0], [2.0]])
+    y = np.array([0.0, 1.0])
+
+    with pytest.raises(ValueError, match="solver"):
+        model.fit(X, y)
