@@ -215,3 +215,18 @@ def test_invalid_threshold_raises(bad_value):
 @pytest.mark.parametrize("good_value", [0, 0.0, 0.5, 1, 1.0, np.float64(0.3)])
 def test_valid_threshold_accepted(good_value):
     LogisticRegression(threshold=good_value)._validate_params()
+
+
+def test_predict_proba_known_values():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[-2.0], [0.0], [2.0]])
+
+    proba = model.predict_proba(X)
+
+    assert proba.shape == (3, 2)
+    assert np.allclose(
+        proba,
+        [[0.8807970780, 0.1192029220], [0.5, 0.5], [0.1192029220, 0.8807970780]],
+    )

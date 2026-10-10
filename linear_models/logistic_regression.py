@@ -36,6 +36,11 @@ class LogisticRegression(BaseLinearModel):
         self._fit_gradient(X, y)
         return self
 
+    def predict_proba(self, X):
+        X = self._validate_predict_input(X)
+        p1 = _sigmoid(self._linear_output(X))
+        return np.column_stack([1 - p1, p1])
+
     def predict(self, X):
         # TODO: будет в следующих шагах
         raise NotImplementedError
