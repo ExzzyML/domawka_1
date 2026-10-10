@@ -275,3 +275,19 @@ def test_fit_rejects_mismatched_x_and_y_and_stays_unfitted():
         model.fit(X, y)
 
     assert not hasattr(model, "coef_")
+
+
+def test_default_params_and_no_weights_before_fit():
+    model = LinearRegression()
+
+    assert vars(model) == {
+        "fit_intercept": True,
+        "solver": "gradient",
+        "penalty": None,
+        "alpha": 0.0,
+        "learning_rate": 0.01,
+        "max_iter": 1000,
+        "tol": 1e-6,
+        "verbose": False,
+        "random_state": None,
+    }
