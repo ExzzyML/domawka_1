@@ -275,3 +275,29 @@ def test_predict_known_values():
     assert pred.shape == (4,)
     assert np.issubdtype(pred.dtype, np.integer)
     assert np.array_equal(pred, [0, 0, 1, 1])
+
+
+@pytest.mark.parametrize(
+    "threshold, expected",
+    [(0.3, [0, 1, 1, 1]), (0.7, [0, 0, 0, 1])],
+)
+def test_predict_uses_custom_threshold(threshold, expected):
+    model = LogisticRegression(threshold=threshold)
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[-2.0], [-0.5], [0.5], [2.0]])
+
+    pred = model.predict(X)
+
+    assert np.array_equal(pred, expected)
+
+
+def test_predict_probability_equal_to_threshold_gives_class_zero():
+    model = LogisticRegression()
+    model.coef_ = np.zeros(2)
+    model.intercept_ = 0.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    pred = model.predict(X)
+
+    assert np.array_equal(pred, [0, 0])
