@@ -423,3 +423,28 @@ def test_l1_penalty_does_not_regularize_intercept():
 
     assert abs(model.coef_[0]) < 0.1
     assert model.intercept_ > 1.0
+
+
+def test_fit_stops_early_when_loss_change_is_below_tol():
+    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    model = LogisticRegression(learning_rate=0.5, max_iter=1000, tol=1e-3)
+
+    model.fit(X, y)
+
+    changes = np.abs(np.diff(model.loss_history_))
+    assert model.n_iter_ < model.max_iter
+    assert len(model.loss_history_) == model.n_iter_
+    assert changes[-1] < 1e-3
+    assert np.all(changes[:-1] >= 1e-3)
+
+
+def test_fit_runs_all_iterations_when_tol_is_zero():
+    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    model = LogisticRegression(learning_rate=0.5, max_iter=30, tol=0.0)
+
+    model.fit(X, y)
+
+    assert model.n_iter_ == 30
+    assert len(model.loss_history_) == 30
