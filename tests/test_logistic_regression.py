@@ -230,3 +230,18 @@ def test_predict_proba_known_values():
         proba,
         [[0.8807970780, 0.1192029220], [0.5, 0.5], [0.1192029220, 0.8807970780]],
     )
+
+
+def test_predict_proba_rows_sum_to_one_and_stay_in_unit_interval():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0, -2.0])
+    model.intercept_ = 0.5
+    X = np.array([[0.0, 0.0], [1.0, 2.0], [-3.0, 1.5], [1000.0, 0.0], [-1000.0, 0.0]])
+
+    with np.errstate(over="raise", invalid="raise"):
+        proba = model.predict_proba(X)
+
+    assert proba.shape == (5, 2)
+    assert np.allclose(proba.sum(axis=1), 1.0)
+    assert np.all(proba >= 0)
+    assert np.all(proba <= 1)
