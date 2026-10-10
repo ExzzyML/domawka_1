@@ -342,24 +342,3 @@ def test_fit_separates_linearly_separable_data():
     assert np.array_equal(model.predict(X), y)
 
 
-def test_fit_decreases_loss_on_separable_data():
-    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
-    y = np.array([0, 0, 0, 1, 1, 1])
-    model = LogisticRegression(learning_rate=0.5, max_iter=200)
-
-    model.fit(X, y)
-
-    history = np.array(model.loss_history_)
-    assert np.all(np.diff(history) <= 1e-12)
-    assert history[-1] < 0.1 * history[0]
-
-
-def test_fit_separates_linearly_separable_data():
-    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
-    y = np.array([0, 0, 0, 1, 1, 1])
-    model = LogisticRegression(learning_rate=0.5, max_iter=200)
-
-    model.fit(X, y)
-
-    assert model.coef_[0] > 0
-    assert np.array_equal(model.predict(X), y)
