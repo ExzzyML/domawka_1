@@ -173,3 +173,19 @@ def test_fit_rejects_single_class_y():
 
     with pytest.raises(ValueError, match="both classes"):
         model.fit(X, y)
+
+
+@pytest.mark.parametrize(
+    "y_values",
+    [[False, False, True, True], [0, 0, 1, 1]],
+    ids=["bool", "int"],
+)
+def test_fit_accepts_bool_and_int_labels(y_values):
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    reference = LogisticRegression(max_iter=50).fit(X, np.array([0.0, 0.0, 1.0, 1.0]))
+
+    model = LogisticRegression(max_iter=50).fit(X, np.array(y_values))
+
+    assert reference.coef_[0] > 0
+    assert np.allclose(model.coef_, reference.coef_)
+    assert np.isclose(model.intercept_, reference.intercept_)
