@@ -448,3 +448,14 @@ def test_fit_runs_all_iterations_when_tol_is_zero():
 
     assert model.n_iter_ == 30
     assert len(model.loss_history_) == 30
+
+
+def test_fit_rejects_mismatched_x_and_y_and_stays_unfitted():
+    model = LogisticRegression()
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([0.0, 1.0])
+
+    with pytest.raises(ValueError, match="samples"):
+        model.fit(X, y)
+
+    assert not hasattr(model, "coef_")
