@@ -388,3 +388,38 @@ def test_refit_starts_from_zero_weights():
 
     assert np.allclose(model.coef_, fresh.coef_)
     assert np.isclose(model.intercept_, fresh.intercept_)
+
+
+def test_l1_penalty_suppresses_weak_feature_more_than_l2():
+    X = np.array(
+        [
+            [-3.0, 1.0],
+            [-2.0, -1.0],
+            [-1.0, 1.0],
+            [1.0, -1.0],
+            [2.0, 1.0],
+            [3.0, -1.0],
+        ]
+    )
+    y = np.array([0, 0, 0, 1, 1, 1])
+    params = {"learning_rate": 0.5, "max_iter": 500}
+    plain = LogisticRegression(**params).fit(X, y)
+    ridge = LogisticRegression(penalty="l2", alpha=0.1, **params).fit(X, y)
+    lasso = LogisticRegression(penalty="l1", alpha=0.1, **params).fit(X, y)
+
+    ridge_ratio = abs(ridge.coef_[1]) / abs(ridge.coef_[0])
+    lasso_ratio = abs(lasso.coef_[1]) / abs(lasso.coef_[0])
+
+    assert abs(lasso.coef_[1]) < 0.1 * abs(plain.coef_[1])
+    assert lasso_ratio < 0.5 * ridge_ratio
+
+
+def test_l1_penalty_does_not_regularize_intercept():
+    X = np.array([[-2.0], [-1.0], [0.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 1, 1, 1, 1, 1])
+    model = LogisticRegression(
+        learning_rate=0.05, max_iter=5000, penalty="l1", alpha=1.0
+    ).fit(X, y)
+
+    assert abs(model.coef_[0]) < 0.1
+    assert model.intercept_ > 1.0
