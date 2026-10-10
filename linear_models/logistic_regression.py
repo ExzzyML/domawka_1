@@ -19,12 +19,15 @@ class LogisticRegression(BaseLinearModel):
         super().__init__(**kwargs)
         self.threshold = threshold
 
-    def _validate_params(self):
-        super()._validate_params()
+    def _validate_threshold(self):
         if not _is_number(self.threshold) or not 0 <= self.threshold <= 1:
             raise ValueError(
                 f"threshold must be a number between 0 and 1, got {self.threshold!r}"
             )
+
+    def _validate_params(self):
+        super()._validate_params()
+        self._validate_threshold()
 
     def fit(self, X, y):
         self._validate_params()
@@ -42,6 +45,7 @@ class LogisticRegression(BaseLinearModel):
         return np.column_stack([1 - p1, p1])
 
     def predict(self, X):
+        self._validate_threshold()
         p1 = self.predict_proba(X)[:, 1]
         return (p1 > self.threshold).astype(int)
 

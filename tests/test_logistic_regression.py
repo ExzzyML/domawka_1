@@ -497,3 +497,17 @@ def test_first_loss_history_value_includes_penalty(penalty, alpha, expected):
 
     assert len(model.loss_history_) == 1
     assert np.isclose(model.loss_history_[0], expected, atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [5.0, -1.0, float("nan"), True, None, "abc"],
+)
+def test_predict_rejects_invalid_threshold(bad_value):
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    model.threshold = bad_value
+
+    with pytest.raises(ValueError, match="threshold"):
+        model.predict(np.array([[1.0]]))
