@@ -42,8 +42,8 @@ class LogisticRegression(BaseLinearModel):
         return np.column_stack([1 - p1, p1])
 
     def predict(self, X):
-        # TODO: будет в следующих шагах
-        raise NotImplementedError
+        p1 = self.predict_proba(X)[:, 1]
+        return (p1 > self.threshold).astype(int)
 
     def _validate_binary_y(self, y):
         if not np.all((y == 0) | (y == 1)):

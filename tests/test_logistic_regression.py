@@ -262,3 +262,16 @@ def test_predict_proba_rejects_wrong_n_features():
 
     with pytest.raises(ValueError, match="features"):
         model.predict_proba(np.array([[1.0], [2.0]]))
+
+
+def test_predict_known_values():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[-2.0], [-0.5], [0.5], [2.0]])
+
+    pred = model.predict(X)
+
+    assert pred.shape == (4,)
+    assert np.issubdtype(pred.dtype, np.integer)
+    assert np.array_equal(pred, [0, 0, 1, 1])
