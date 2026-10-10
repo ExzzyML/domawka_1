@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from linear_models.base import NotFittedError
 from linear_models.logistic_regression import LogisticRegression, _sigmoid
 from tests.helpers import numerical_gradient
 
@@ -245,3 +246,19 @@ def test_predict_proba_rows_sum_to_one_and_stay_in_unit_interval():
     assert np.allclose(proba.sum(axis=1), 1.0)
     assert np.all(proba >= 0)
     assert np.all(proba <= 1)
+
+
+def test_predict_proba_before_fit_raises():
+    model = LogisticRegression()
+
+    with pytest.raises(NotFittedError, match="not fitted"):
+        model.predict_proba(np.array([[1.0]]))
+
+
+def test_predict_proba_rejects_wrong_n_features():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0, 2.0])
+    model.intercept_ = 0.0
+
+    with pytest.raises(ValueError, match="features"):
+        model.predict_proba(np.array([[1.0], [2.0]]))
