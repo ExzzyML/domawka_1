@@ -210,3 +210,8 @@ def test_invalid_threshold_raises(bad_value):
     model = LogisticRegression(threshold=bad_value)
     with pytest.raises(ValueError, match="threshold"):
         model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [0, 0.0, 0.5, 1, 1.0, np.float64(0.3)])
+def test_valid_threshold_accepted(good_value):
+    LogisticRegression(threshold=good_value)._validate_params()
