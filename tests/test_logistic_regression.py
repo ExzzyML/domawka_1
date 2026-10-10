@@ -511,3 +511,18 @@ def test_predict_rejects_invalid_threshold(bad_value):
 
     with pytest.raises(ValueError, match="threshold"):
         model.predict(np.array([[1.0]]))
+
+
+def test_predict_proba_does_not_depend_on_threshold():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    model.threshold = "abc"
+    X = np.array([[-2.0], [0.0], [2.0]])
+
+    proba = model.predict_proba(X)
+
+    assert np.allclose(
+        proba,
+        [[0.8807970780, 0.1192029220], [0.5, 0.5], [0.1192029220, 0.8807970780]],
+    )
