@@ -296,6 +296,8 @@ def test_default_params_and_no_weights_before_fit():
         "lr_decay": 0.9,
         "store_gradients": False,
         "callbacks": None,
+        "batch_size": None,
+        "shuffle": True,
     }
 
 
@@ -605,3 +607,126 @@ def test_score_rejects_bad_sample_weight():
     model = _fitted_model(1.0, 0.0)
     with pytest.raises(ValueError, match="sample_weight"):
         model.score([[1.0], [2.0]], [1.0, 2.0], sample_weight=[1.0, -1.0])
+
+
+def _sgd_data():
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    y = np.array([2.0, 4.0, 6.0, 8.0])
+    return X, y
+
+
+def _sgd_params(**params):
+    base = {"fit_intercept": False, "learning_rate": 0.1, "tol": 0.0}
+    return {**base, **params}
+
+
+def test_full_batch_epoch_makes_one_step():
+    X, y = _sgd_data()
+    model = LinearRegression(**_sgd_params(max_iter=1)).fit(X, y)
+
+    # grad = (1 * -2 + 2 * -4 + 3 * -6 + 4 * -8) / 4 = -15
+    assert np.allclose(model.coef_, [1.5])
+    assert np.allclose(model.loss_history_, [0.9375])
+
+
+def test_mini_batch_epoch_makes_one_step_per_batch():
+    X, y = _sgd_data()
+    params = _sgd_params(max_iter=1, batch_size=2, shuffle=False)
+    model = LinearRegression(store_gradients=True, **params).fit(X, y)
+
+    # step 1: grad -5 -> w = 0.5; step 2: grad -18.75 -> w = 2.375
+    assert np.allclose(model.coef_, [2.375])
+    assert np.allclose(model.gradient_history_, [[-5.0, 0.0], [-18.75, 0.0]])
+    assert model.n_iter_ == 1
+    assert np.allclose(model.loss_history_, [0.52734375])
+
+
+def test_iterations_are_epochs():
+    X, y = _sgd_data()
+    params = _sgd_params(max_iter=3, batch_size=2, store_gradients=True)
+    model = LinearRegression(**params).fit(X, y)
+
+    assert model.n_iter_ == 3
+    assert len(model.loss_history_) == 3
+    assert model.gradient_history_.shape == (6, 2)
+
+
+def test_learning_rate_schedule_follows_epochs():
+    X, y = _sgd_data()
+    params = _sgd_params(
+        max_iter=2,
+        batch_size=2,
+        shuffle=False,
+        lr_schedule="exponential",
+        lr_decay=0.5,
+    )
+    model = LinearRegression(**params).fit(X, y)
+
+    # epoch 0 (lr 0.1) gives 2.375; epoch 1 (lr 0.05) gives 2.123046875
+    assert np.allclose(model.coef_, [2.123046875])
+
+
+def test_batch_size_larger_than_n_equals_full_batch():
+    X, y = _sgd_data()
+    full = LinearRegression(**_sgd_params(max_iter=5)).fit(X, y)
+    big = LinearRegression(**_sgd_params(max_iter=5, batch_size=100)).fit(X, y)
+
+    assert np.array_equal(full.coef_, big.coef_)
+
+
+def test_shuffle_follows_the_random_state_permutation():
+    X, y = _sgd_data()
+    params = _sgd_params(max_iter=2, batch_size=2, random_state=3)
+    model = LinearRegression(**params).fit(X, y)
+
+    rng = np.random.default_rng(3)
+    w = 0.0
+    for _ in range(2):
+        order = rng.permutation(4)
+        for batch in (order[:2], order[2:]):
+            x_b, y_b = X[batch, 0], y[batch]
+            grad = np.mean((w * x_b - y_b) * x_b)
+            w -= 0.1 * grad
+    assert np.allclose(model.coef_, [w])
+
+
+def test_same_random_state_gives_same_result_and_other_state_differs():
+    X, _ = _sgd_data()
+    y = np.array([2.0, 5.0, 6.0, 7.0])  # не лежит на одной прямой: порядок важен
+    params = _sgd_params(max_iter=3, batch_size=1)
+    first = LinearRegression(random_state=1, **params).fit(X, y)
+    again = LinearRegression(random_state=1, **params).fit(X, y)
+    other = LinearRegression(random_state=2, **params).fit(X, y)
+
+    assert np.array_equal(first.coef_, again.coef_)
+    assert not np.array_equal(first.coef_, other.coef_)
+
+
+def test_sgd_finds_the_true_line():
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-1, 1, size=(40, 1))
+    y = 2.0 * X[:, 0] + 1.0
+    model = LinearRegression(
+        batch_size=1, learning_rate=0.05, max_iter=100, tol=0.0, random_state=0
+    ).fit(X, y)
+
+    assert np.allclose(model.coef_, [2.0], atol=0.05)
+    assert np.isclose(model.intercept_, 1.0, atol=0.05)
+
+
+def test_batch_with_zero_total_weight_is_skipped():
+    X, y = _sgd_data()
+    weights = np.array([0.0, 0.0, 1.0, 1.0])
+    params = _sgd_params(max_iter=1, batch_size=2, shuffle=False)
+    model = LinearRegression(store_gradients=True, **params)
+    model.fit(X, y, sample_weight=weights)
+
+    # first batch skipped; second: grad = (3 * -6 + 4 * -8) / 2 = -25
+    assert np.allclose(model.coef_, [2.5])
+    assert model.gradient_history_.shape == (1, 2)
+
+
+def test_analytic_solver_rejects_batch_size():
+    model = LinearRegression(solver="analytic", batch_size=2)
+    with pytest.raises(ValueError, match="batch_size"):
+        model.fit([[1.0], [2.0]], [1.0, 2.0])
