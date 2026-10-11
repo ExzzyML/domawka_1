@@ -24,6 +24,17 @@ class NotFittedError(ValueError):
 
 
 class BaseLinearModel(ABC):
+    """Общая основа линейных моделей: параметры, проверки и градиентный спуск.
+
+    Параметры: fit_intercept (обучать свободный член), solver ("gradient" или
+    "analytic"), penalty (None, "l1" или "l2"), alpha (сила штрафа, >= 0),
+    learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
+    tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
+    verbose и random_state (принимаются, но не используются).
+
+    После fit доступны coef_, intercept_, n_iter_ и loss_history_.
+    """
+
     def __init__(
         self,
         fit_intercept=True,
