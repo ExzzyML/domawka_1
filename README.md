@@ -59,8 +59,9 @@ BaseLinearModel (абстрактный)
 |---|---|---|
 | `fit_intercept` | `True` | обучать свободный член; при `False` `intercept_ = 0.0` |
 | `solver` | `"gradient"` | `"gradient"` или `"analytic"` (только у `LinearRegression`) |
-| `penalty` | `None` | `None`, `"l1"` или `"l2"` |
+| `penalty` | `None` | `None`, `"l1"`, `"l2"` или `"elasticnet"` |
 | `alpha` | `0.0` | сила штрафа, число `>= 0` |
+| `l1_ratio` | `0.5` | доля L1 в штрафе `"elasticnet"`, число из `[0, 1]`; при других `penalty` не используется |
 | `learning_rate` | `0.01` | шаг градиентного спуска, число `> 0` |
 | `max_iter` | `1000` | максимум итераций, целое `>= 1` |
 | `tol` | `1e-6` | порог раннего останова, число `>= 0` |
@@ -98,8 +99,11 @@ BaseLinearModel (абстрактный)
 | `None` | 0 | нет |
 | `"l2"` | `½ · ‖w‖²` | `alpha · w` |
 | `"l1"` | `Σ\|w_j\|` | `alpha · sign(w)` (субградиент) |
+| `"elasticnet"` | `l1_ratio · Σ\|w_j\| + ½ · (1 − l1_ratio) · ‖w‖²` | `alpha · (l1_ratio · sign(w) + (1 − l1_ratio) · w)` |
 
 Свободный член `intercept_` не штрафуется ни в одном режиме.
+
+`l1_ratio=0` даёт ровно L2, `l1_ratio=1` ровно L1. `"elasticnet"` работает только с `solver="gradient"`; как и у L1, коэффициенты получаются малыми, но без точных нулей.
 
 ## Early stopping
 
@@ -117,6 +121,7 @@ BaseLinearModel (абстрактный)
 |---|---|---|
 | `LinearRegression`, `penalty="l2"`, `alpha` | `Ridge` | `alpha_sklearn = n · alpha` |
 | `LinearRegression`, `penalty="l1"`, `alpha` | `Lasso` | `alpha_sklearn = alpha` |
+| `LinearRegression`, `penalty="elasticnet"`, `alpha`, `l1_ratio` | `ElasticNet` | `alpha_sklearn = alpha`, `l1_ratio` тот же |
 | `LogisticRegression`, `penalty="l2"`, `alpha` | `LogisticRegression(l1_ratio=0, C=C)` | `C = 1 / (n · alpha)` |
 | `LogisticRegression`, `penalty="l1"`, `alpha` | `LogisticRegression(l1_ratio=1, solver="saga", C=C)` | `C = 1 / (n · alpha)` |
 | без штрафа | `LogisticRegression(C=np.inf)` | параметр `penalty` в sklearn 1.9 устарел |
