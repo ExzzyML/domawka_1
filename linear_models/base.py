@@ -30,11 +30,15 @@ class BaseLinearModel(ABC):
     "analytic"), penalty (None, "l1", "l2" или "elasticnet"), alpha (сила штрафа,
     >= 0), learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
     tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
-    verbose и random_state (принимаются, но не используются), l1_ratio (доля L1
+    verbose (печать прогресса), random_state (пока не используется), l1_ratio (доля L1
     в штрафе "elasticnet", число из [0, 1]; при других penalty не используется).
     Дополнительно: momentum (коэффициент скорости β, число из [0, 1); 0.0 — обычный
     спуск), lr_schedule (None, "exponential" или "inverse_time": шаг убывает с номером
     итерации) и lr_decay (параметр убывания, число > 0, для "exponential" не больше 1).
+    store_gradients (True: сохранить gradient_history_ формы (n_iter_, d + 1), строка
+    i градиент цели перед шагом i, последний столбец интерцепт), callbacks (список
+    функций cb(model, iteration, loss), вызываются после каждой итерации; True из
+    функции останавливает обучение). verbose=True печатает прогресс.
 
     После fit доступны coef_, intercept_, n_iter_ и loss_history_.
     """
@@ -54,6 +58,8 @@ class BaseLinearModel(ABC):
         momentum=0.0,
         lr_schedule=None,
         lr_decay=0.9,
+        store_gradients=False,
+        callbacks=None,
     ):
         self.fit_intercept = fit_intercept
         self.solver = solver
@@ -68,6 +74,8 @@ class BaseLinearModel(ABC):
         self.momentum = momentum
         self.lr_schedule = lr_schedule
         self.lr_decay = lr_decay
+        self.store_gradients = store_gradients
+        self.callbacks = callbacks
 
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
@@ -113,27 +121,57 @@ class BaseLinearModel(ABC):
 
     def _fit_gradient(self, X, y):
         """Градиентный спуск (с momentum и расписанием шага): обновляет
-        coef_ и intercept_, ведёт историю."""
+        coef_ и intercept_, ведёт историю, вызывает callbacks."""
         self.loss_history_ = []
+        self.__dict__.pop("gradient_history_", None)
+        gradients = []
         velocity_w = np.zeros_like(self.coef_)
         velocity_b = 0.0
+        reason = "max_iter"
         for i in range(self.max_iter):
             lr = self._learning_rate_at(i)
             grad_w, grad_b = self._gradient(X, y)
             grad_w = grad_w + self._penalty_gradient()
+            if self.store_gradients:
+                gradients.append(
+                    np.append(grad_w, grad_b if self.fit_intercept else 0.0)
+                )
             velocity_w = self.momentum * velocity_w + grad_w
             self.coef_ = self.coef_ - lr * velocity_w
             if self.fit_intercept:
                 velocity_b = self.momentum * velocity_b + grad_b
                 self.intercept_ = self.intercept_ - lr * velocity_b
-            self.loss_history_.append(self._objective(X, y))
+            loss = self._objective(X, y)
+            self.loss_history_.append(loss)
             self.n_iter_ = i + 1
+            if self.verbose and (i == 0 or (i + 1) % 100 == 0):
+                print(f"iter {i + 1}: J={loss:.6g}")
+            if self._run_callbacks(i + 1, loss):
+                reason = "callback"
+                break
             if (
                 len(self.loss_history_) > 1
                 and abs(self.loss_history_[-2] - self.loss_history_[-1]) < self.tol
             ):
+                reason = "tol"
                 break
+        if self.store_gradients:
+            self.gradient_history_ = np.array(gradients)
+        if self.verbose:
+            print(
+                f"stopped at iteration {self.n_iter_}: "
+                f"J={self.loss_history_[-1]:.6g}, reason: {reason}"
+            )
         return self
+
+    def _run_callbacks(self, iteration, loss):
+        """Вызвать все callbacks; True, если хотя бы один вернул True."""
+        stop = False
+        for callback in self.callbacks or ():
+            result = callback(self, iteration, loss)
+            if isinstance(result, (bool, np.bool_)) and result:
+                stop = True
+        return stop
 
     def _validate_params(self):
         if self.solver not in ("gradient", "analytic"):
@@ -172,6 +210,18 @@ class BaseLinearModel(ABC):
         if not _is_number(self.momentum) or not 0 <= self.momentum < 1:
             raise ValueError(
                 f"momentum must be a number in [0, 1), got {self.momentum!r}"
+            )
+        if self.store_gradients is not True and self.store_gradients is not False:
+            raise ValueError(
+                f"store_gradients must be True or False, got {self.store_gradients!r}"
+            )
+        if self.callbacks is not None and not (
+            isinstance(self.callbacks, (list, tuple))
+            and all(callable(cb) for cb in self.callbacks)
+        ):
+            raise ValueError(
+                "callbacks must be None or a list/tuple of callables, "
+                f"got {self.callbacks!r}"
             )
         if not _is_number(self.l1_ratio) or not 0 <= self.l1_ratio <= 1:
             raise ValueError(

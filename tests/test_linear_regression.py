@@ -294,6 +294,8 @@ def test_default_params_and_no_weights_before_fit():
         "momentum": 0.0,
         "lr_schedule": None,
         "lr_decay": 0.9,
+        "store_gradients": False,
+        "callbacks": None,
     }
 
 
@@ -410,3 +412,24 @@ def test_fit_twice_with_momentum_gives_same_result():
     second = model.fit(X, y).coef_.copy()
 
     assert np.array_equal(first, second)
+
+
+def test_gradient_history_of_linear_regression():
+    X = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 5.0], [4.0, 3.0]])
+    y = np.array([1.0, 2.0, 4.0, 5.0])
+    model = LinearRegression(store_gradients=True, max_iter=50, tol=0.0).fit(X, y)
+    start = LinearRegression()
+    start.coef_ = np.zeros(2)
+    start.intercept_ = 0.0
+    grad_w, grad_b = start._gradient(X, y)
+
+    history = model.gradient_history_
+    assert history.shape == (model.n_iter_, 3)
+    assert np.allclose(history[0], np.append(grad_w, grad_b))
+    assert np.linalg.norm(history[-1]) < np.linalg.norm(history[0])
+
+
+def test_analytic_solver_rejects_store_gradients():
+    model = LinearRegression(solver="analytic", store_gradients=True)
+    with pytest.raises(ValueError, match="store_gradients"):
+        model.fit([[1.0], [2.0]], [1.0, 2.0])

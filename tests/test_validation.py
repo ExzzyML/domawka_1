@@ -468,3 +468,170 @@ def test_exponential_decay_above_one_raises():
 
 def test_inverse_time_decay_above_one_is_valid():
     DummyModel(lr_schedule="inverse_time", lr_decay=1.5)._validate_params()
+
+
+def _quadratic_model(**params):
+    params = {"learning_rate": 0.5, "max_iter": 3, "tol": 0.0, **params}
+    model = QuadraticModel(**params)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    return model
+
+
+_XY = (np.array([[1.0, 2.0], [3.0, 4.0]]), np.array([0.0, 1.0]))
+
+
+def test_default_store_gradients_and_callbacks():
+    model = DummyModel()
+
+    assert model.store_gradients is False
+    assert model.callbacks is None
+
+
+def test_gradient_history_is_off_by_default():
+    model = _quadratic_model()
+    model._fit_gradient(*_XY)
+
+    assert not hasattr(model, "gradient_history_")
+
+
+def test_gradient_history_stores_gradient_before_each_step():
+    model = _quadratic_model(store_gradients=True)
+    model._fit_gradient(*_XY)
+
+    expected = [[4.0, -2.0, 2.0], [2.0, -1.0, 1.0], [1.0, -0.5, 0.5]]
+    assert model.gradient_history_.shape == (3, 3)
+    assert np.allclose(model.gradient_history_, expected)
+
+
+def test_gradient_history_has_zero_intercept_column_without_intercept():
+    model = _quadratic_model(store_gradients=True, fit_intercept=False)
+    model._fit_gradient(*_XY)
+
+    expected = [[4.0, -2.0, 0.0], [2.0, -1.0, 0.0], [1.0, -0.5, 0.0]]
+    assert np.allclose(model.gradient_history_, expected)
+
+
+def test_gradient_history_includes_penalty_gradient():
+    model = _quadratic_model(store_gradients=True, penalty="l2", alpha=0.5, max_iter=1)
+    model._fit_gradient(*_XY)
+
+    assert np.allclose(model.gradient_history_, [[6.0, -3.0, 2.0]])
+
+
+def test_gradient_history_is_removed_when_refit_without_storing():
+    model = _quadratic_model(store_gradients=True)
+    model._fit_gradient(*_XY)
+    model.store_gradients = False
+    model._fit_gradient(*_XY)
+
+    assert not hasattr(model, "gradient_history_")
+
+
+def test_callback_receives_model_iteration_and_loss():
+    calls = []
+
+    def record(model, iteration, loss):
+        calls.append((model, iteration, loss))
+
+    model = _quadratic_model(callbacks=[record])
+    model._fit_gradient(*_XY)
+
+    assert [c[1] for c in calls] == [1, 2, 3]
+    assert np.allclose([c[2] for c in calls], [3.0, 0.75, 0.1875])
+    assert all(c[0] is model for c in calls)
+
+
+def test_callback_returning_true_stops_training():
+    model = _quadratic_model(callbacks=[lambda m, i, loss: i == 2], max_iter=10)
+    model._fit_gradient(*_XY)
+
+    assert model.n_iter_ == 2
+    assert len(model.loss_history_) == 2
+
+
+def test_callback_returning_other_values_does_not_stop():
+    model = _quadratic_model(callbacks=[lambda m, i, loss: 1])
+    model._fit_gradient(*_XY)
+
+    assert model.n_iter_ == 3
+
+
+def test_all_callbacks_are_called_even_if_first_requests_stop():
+    calls = []
+
+    def stopper(model, iteration, loss):
+        return True
+
+    def recorder(model, iteration, loss):
+        calls.append(iteration)
+
+    model = _quadratic_model(callbacks=(stopper, recorder), max_iter=10)
+    model._fit_gradient(*_XY)
+
+    assert model.n_iter_ == 1
+    assert calls == [1]
+
+
+@pytest.mark.parametrize("bad_value", [print, "f", 5, [1], [print, "x"], {"a": print}])
+def test_invalid_callbacks_raise(bad_value):
+    model = DummyModel(callbacks=bad_value)
+    with pytest.raises(ValueError, match="callbacks"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [None, [], [print], (print, len)])
+def test_valid_callbacks_accepted(good_value):
+    DummyModel(callbacks=good_value)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [1, 0, "yes", None])
+def test_invalid_store_gradients_raises(bad_value):
+    model = DummyModel(store_gradients=bad_value)
+    with pytest.raises(ValueError, match="store_gradients"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [True, False])
+def test_valid_store_gradients_accepted(good_value):
+    DummyModel(store_gradients=good_value)._validate_params()
+
+
+def test_verbose_is_silent_by_default(capsys):
+    _quadratic_model()._fit_gradient(*_XY)
+
+    assert capsys.readouterr().out == ""
+
+
+def test_verbose_prints_first_iteration_and_summary(capsys):
+    _quadratic_model(verbose=True)._fit_gradient(*_XY)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        "iter 1: J=3",
+        "stopped at iteration 3: J=0.1875, reason: max_iter",
+    ]
+
+
+def test_verbose_prints_every_hundredth_iteration(capsys):
+    model = _quadratic_model(verbose=True, learning_rate=0.01, max_iter=250)
+    model._fit_gradient(*_XY)
+
+    iter_lines = [
+        line.split(":")[0]
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("iter ")
+    ]
+    assert iter_lines == ["iter 1", "iter 100", "iter 200"]
+
+
+def test_verbose_reports_tol_and_callback_reasons(capsys):
+    _quadratic_model(verbose=True, tol=1e-3, max_iter=100)._fit_gradient(*_XY)
+    tol_out = capsys.readouterr().out
+    model = _quadratic_model(verbose=True, callbacks=[lambda m, i, loss: i == 2])
+    model._fit_gradient(*_XY)
+    callback_out = capsys.readouterr().out
+
+    assert "reason: tol" in tol_out
+    assert "stopped at iteration 2" in callback_out
+    assert "reason: callback" in callback_out
