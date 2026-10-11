@@ -11,10 +11,10 @@ class DummyModel(BaseLinearModel):
     def predict(self, X):
         return self._linear_output(X)
 
-    def _loss(self, X, y):
+    def _loss(self, X, y, sample_weight=None):
         return 0.0
 
-    def _gradient(self, X, y):
+    def _gradient(self, X, y, sample_weight=None):
         return 0.0, 0.0
 
 
@@ -221,7 +221,7 @@ def test_penalty_gradient(penalty, expected):
 
 
 class FixedLossModel(DummyModel):
-    def _loss(self, X, y):
+    def _loss(self, X, y, sample_weight=None):
         return 2.5
 
 
@@ -244,10 +244,10 @@ def test_objective_is_data_loss_plus_penalty(penalty, expected):
 class QuadraticModel(DummyModel):
     """L(w, b) = 0.5 * sum(w**2) + 0.5 * b**2, градиент (w, b)."""
 
-    def _loss(self, X, y):
+    def _loss(self, X, y, sample_weight=None):
         return 0.5 * np.sum(self.coef_**2) + 0.5 * self.intercept_**2
 
-    def _gradient(self, X, y):
+    def _gradient(self, X, y, sample_weight=None):
         return self.coef_.copy(), self.intercept_
 
 
@@ -635,3 +635,68 @@ def test_verbose_reports_tol_and_callback_reasons(capsys):
     assert "reason: tol" in tol_out
     assert "stopped at iteration 2" in callback_out
     assert "reason: callback" in callback_out
+
+
+class RecordingModel(QuadraticModel):
+    """Запоминает, какие sample_weight пришли в _loss и _gradient."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.seen = []
+
+    def _loss(self, X, y, sample_weight=None):
+        self.seen.append(sample_weight)
+        return super()._loss(X, y, sample_weight)
+
+    def _gradient(self, X, y, sample_weight=None):
+        self.seen.append(sample_weight)
+        return super()._gradient(X, y, sample_weight)
+
+
+def test_validate_sample_weight_none_stays_none():
+    assert DummyModel()._validate_sample_weight(None, 3) is None
+
+
+def test_validate_sample_weight_returns_float_array():
+    result = DummyModel()._validate_sample_weight([1, 2, 0], 3)
+
+    assert result.dtype == float
+    assert np.array_equal(result, [1.0, 2.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        [[1.0, 2.0, 3.0]],
+        [1.0, 2.0],
+        [1.0, -1.0, 2.0],
+        [1.0, float("nan"), 2.0],
+        [1.0, float("inf"), 2.0],
+        [0.0, 0.0, 0.0],
+        ["a", "b", "c"],
+    ],
+)
+def test_validate_sample_weight_rejects_bad_values(bad_value):
+    with pytest.raises(ValueError, match="sample_weight"):
+        DummyModel()._validate_sample_weight(bad_value, 3)
+
+
+def test_total_weight_and_apply_weight():
+    weights = np.array([3.0, 1.0])
+    values = np.array([2.0, 5.0])
+
+    assert DummyModel._total_weight(None, 2) == 2
+    assert DummyModel._total_weight(weights, 2) == 4.0
+    assert DummyModel._apply_weight(values, None) is values
+    assert np.array_equal(DummyModel._apply_weight(values, weights), [6.0, 5.0])
+
+
+def test_fit_gradient_passes_sample_weight_to_loss_and_gradient():
+    weights = np.array([3.0, 1.0])
+    model = RecordingModel(learning_rate=0.5, max_iter=2, tol=0.0)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    model._fit_gradient(*_XY, sample_weight=weights)
+
+    assert len(model.seen) == 4
+    assert all(seen is weights for seen in model.seen)

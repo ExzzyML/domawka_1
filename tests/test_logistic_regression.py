@@ -575,3 +575,103 @@ def test_gradient_history_of_logistic_regression():
     model = LogisticRegression(store_gradients=True, max_iter=20, tol=0.0).fit(X, y)
 
     assert model.gradient_history_.shape == (20, 3)
+
+
+def _logistic_weighted_data():
+    X = np.array([[0.0, 1.0], [1.0, 0.0], [2.0, 2.0], [3.0, 1.0], [1.5, 1.5]])
+    y = np.array([0, 0, 1, 1, 1])
+    return X, y
+
+
+def test_weighted_logistic_loss_known_value():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    X = np.array([[0.0], [2.0]])
+    y = np.array([0.0, 1.0])
+
+    # per-object losses: ln 2 and ln(1 + e^2) - 2
+    assert np.isclose(model._loss(X, y, np.array([1.0, 3.0])), 0.2684828)
+
+
+def test_weighted_logistic_gradient_matches_numerical_gradient():
+    X, y = _logistic_weighted_data()
+    weights = np.array([1.0, 2.0, 0.5, 3.0, 1.0])
+    model = LogisticRegression()
+    model.coef_ = np.array([0.3, -0.2])
+    model.intercept_ = 0.1
+
+    grad_w, grad_b = model._gradient(X, y, weights)
+    num_w, num_b = numerical_gradient(model, X, y, sample_weight=weights)
+
+    assert np.allclose(grad_w, num_w, atol=1e-6)
+    assert np.isclose(grad_b, num_b, atol=1e-6)
+
+
+def test_logistic_integer_weights_equal_repeated_rows():
+    X, y = _logistic_weighted_data()
+    counts = np.array([2, 1, 3, 1, 2])
+    params = {
+        "penalty": "l2",
+        "alpha": 0.05,
+        "learning_rate": 0.1,
+        "max_iter": 200,
+        "tol": 0.0,
+    }
+    weighted = LogisticRegression(**params).fit(X, y, sample_weight=counts)
+    repeated = LogisticRegression(**params).fit(
+        np.repeat(X, counts, axis=0), np.repeat(y, counts)
+    )
+
+    assert np.allclose(weighted.coef_, repeated.coef_)
+    assert np.isclose(weighted.intercept_, repeated.intercept_)
+    assert np.allclose(weighted.loss_history_, repeated.loss_history_)
+
+
+def test_logistic_zero_weight_equals_removing_the_row():
+    X, y = _logistic_weighted_data()
+    weights = np.array([1.0, 2.0, 0.0, 1.0, 1.0])
+    keep = weights > 0
+    params = {"learning_rate": 0.1, "max_iter": 200, "tol": 0.0}
+    zeroed = LogisticRegression(**params).fit(X, y, sample_weight=weights)
+    removed = LogisticRegression(**params).fit(
+        X[keep], y[keep], sample_weight=weights[keep]
+    )
+
+    assert np.allclose(zeroed.coef_, removed.coef_)
+    assert np.isclose(zeroed.intercept_, removed.intercept_)
+
+
+def test_logistic_all_ones_weights_equal_no_weights():
+    X, y = _logistic_weighted_data()
+    params = {"penalty": "l1", "alpha": 0.02, "max_iter": 100, "tol": 0.0}
+    plain = LogisticRegression(**params).fit(X, y)
+    ones = LogisticRegression(**params).fit(X, y, sample_weight=np.ones(len(y)))
+
+    assert np.allclose(plain.coef_, ones.coef_)
+    assert np.isclose(plain.intercept_, ones.intercept_)
+
+
+def test_logistic_needs_both_classes_with_positive_weight():
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([0, 0, 1])
+    with pytest.raises(ValueError, match="both classes"):
+        LogisticRegression().fit(X, y, sample_weight=[1.0, 1.0, 0.0])
+
+
+def test_logistic_fit_rejects_bad_sample_weight():
+    model = LogisticRegression()
+    with pytest.raises(ValueError, match="sample_weight"):
+        model.fit([[0.0], [1.0]], [0, 1], sample_weight=[1.0])
+
+    assert not hasattr(model, "coef_")
+
+
+def test_weighted_accuracy():
+    X = np.array([[0.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 1, 1, 1])
+
+    # predict = [0, 0, 1, 1]; correct = [yes, no, yes, yes]; weights 1 + 1 + 1 of 6
+    result = _fitted_logistic().score(X, y, sample_weight=[1.0, 3.0, 1.0, 1.0])
+
+    assert np.isclose(result, 0.5)

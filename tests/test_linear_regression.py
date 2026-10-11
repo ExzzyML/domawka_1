@@ -433,3 +433,175 @@ def test_analytic_solver_rejects_store_gradients():
     model = LinearRegression(solver="analytic", store_gradients=True)
     with pytest.raises(ValueError, match="store_gradients"):
         model.fit([[1.0], [2.0]], [1.0, 2.0])
+
+
+def _weighted_data():
+    X = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 5.0], [4.0, 3.0], [5.0, 4.0]])
+    y = np.array([1.0, 2.0, 4.0, 5.0, 4.0])
+    weights = np.array([1.0, 2.0, 3.0, 1.0, 0.5])
+    return X, y, weights
+
+
+def test_weighted_loss_divides_by_total_weight():
+    model = _fitted_model(0.0, 0.0)
+    X = np.array([[0.0], [0.0]])
+    y = np.array([1.0, 3.0])
+
+    assert np.isclose(model._loss(X, y), 2.5)
+    # (3 * 1 + 1 * 9) / (2 * 4)
+    assert np.isclose(model._loss(X, y, np.array([3.0, 1.0])), 1.5)
+
+
+def test_weighted_gradient_known_values():
+    model = _fitted_model(0.0, 0.0)
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 3.0])
+
+    grad_w, grad_b = model._gradient(X, y, np.array([3.0, 1.0]))
+
+    # r = [-1, -3], w * r = [-3, -3], W = 4
+    assert np.allclose(grad_w, [-2.25])
+    assert np.isclose(grad_b, -1.5)
+
+
+def test_weighted_gradient_matches_numerical_gradient():
+    X, y, weights = _weighted_data()
+    model = LinearRegression()
+    model.coef_ = np.array([0.3, -0.2])
+    model.intercept_ = 0.1
+
+    grad_w, grad_b = model._gradient(X, y, weights)
+    num_w, num_b = numerical_gradient(model, X, y, sample_weight=weights)
+
+    assert np.allclose(grad_w, num_w, atol=1e-6)
+    assert np.isclose(grad_b, num_b, atol=1e-6)
+
+
+@pytest.mark.parametrize("solver", ["gradient", "analytic"])
+@pytest.mark.parametrize("penalty, alpha", [(None, 0.0), ("l2", 0.1)])
+@pytest.mark.parametrize("fit_intercept", [True, False])
+def test_integer_weights_equal_repeated_rows(solver, penalty, alpha, fit_intercept):
+    X, y, _ = _weighted_data()
+    counts = np.array([1, 2, 3, 1, 2])
+    params = {
+        "solver": solver,
+        "penalty": penalty,
+        "alpha": alpha,
+        "fit_intercept": fit_intercept,
+        "learning_rate": 0.02,
+        "max_iter": 300,
+        "tol": 0.0,
+    }
+    weighted = LinearRegression(**params).fit(X, y, sample_weight=counts)
+    repeated = LinearRegression(**params).fit(
+        np.repeat(X, counts, axis=0), np.repeat(y, counts)
+    )
+
+    assert np.allclose(weighted.coef_, repeated.coef_)
+    assert np.isclose(weighted.intercept_, repeated.intercept_)
+    assert np.allclose(weighted.loss_history_, repeated.loss_history_)
+
+
+@pytest.mark.parametrize("solver", ["gradient", "analytic"])
+def test_scaling_all_weights_changes_nothing(solver):
+    X, y, weights = _weighted_data()
+    params = {
+        "solver": solver,
+        "penalty": "l2",
+        "alpha": 0.1,
+        "tol": 0.0,
+        "max_iter": 200,
+    }
+    base = LinearRegression(**params).fit(X, y, sample_weight=weights)
+    scaled = LinearRegression(**params).fit(X, y, sample_weight=5 * weights)
+
+    assert np.allclose(base.coef_, scaled.coef_)
+    assert np.isclose(base.intercept_, scaled.intercept_)
+
+
+@pytest.mark.parametrize("solver", ["gradient", "analytic"])
+def test_zero_weight_equals_removing_the_row(solver):
+    X, y, weights = _weighted_data()
+    weights[2] = 0.0
+    keep = weights > 0
+    params = {"solver": solver, "tol": 0.0, "max_iter": 200}
+    zeroed = LinearRegression(**params).fit(X, y, sample_weight=weights)
+    removed = LinearRegression(**params).fit(
+        X[keep], y[keep], sample_weight=weights[keep]
+    )
+
+    assert np.allclose(zeroed.coef_, removed.coef_)
+    assert np.isclose(zeroed.intercept_, removed.intercept_)
+
+
+@pytest.mark.parametrize("solver", ["gradient", "analytic"])
+def test_all_ones_weights_equal_no_weights(solver):
+    X, y, _ = _weighted_data()
+    params = {
+        "solver": solver,
+        "penalty": "l2",
+        "alpha": 0.1,
+        "tol": 0.0,
+        "max_iter": 200,
+    }
+    plain = LinearRegression(**params).fit(X, y)
+    ones = LinearRegression(**params).fit(X, y, sample_weight=np.ones(len(y)))
+
+    assert np.allclose(plain.coef_, ones.coef_)
+    assert np.isclose(plain.intercept_, ones.intercept_)
+
+
+def test_analytic_weighted_matches_sklearn_reference():
+    # Эталон: sklearn LinearRegression().fit(X, y, sample_weight=weights)
+    X, y, weights = _weighted_data()
+    model = LinearRegression(solver="analytic").fit(X, y, sample_weight=weights)
+
+    assert np.allclose(model.coef_, [0.87386424, 0.27044361], atol=1e-7)
+    assert np.isclose(model.intercept_, -0.05398183, atol=1e-7)
+
+
+def test_analytic_weighted_without_intercept_matches_sklearn_reference():
+    # Эталон: sklearn LinearRegression(fit_intercept=False)
+    X, y, weights = _weighted_data()
+    model = LinearRegression(solver="analytic", fit_intercept=False)
+    model.fit(X, y, sample_weight=weights)
+
+    assert np.allclose(model.coef_, [0.85987903, 0.26764113], atol=1e-7)
+
+
+def test_analytic_weighted_ridge_matches_sklearn_reference():
+    # Эталон: sklearn Ridge(alpha=sum(weights) * 0.1) = Ridge(alpha=0.75)
+    X, y, weights = _weighted_data()
+    model = LinearRegression(solver="analytic", penalty="l2", alpha=0.1)
+    model.fit(X, y, sample_weight=weights)
+
+    assert np.allclose(model.coef_, [0.78653526, 0.29064415], atol=1e-7)
+    assert np.isclose(model.intercept_, 0.12007568, atol=1e-7)
+
+
+@pytest.mark.parametrize(
+    "bad_value", [[1.0, 1.0], [1.0, -1.0, 1.0], [0.0, 0.0, 0.0], [1.0, np.nan, 1.0]]
+)
+def test_fit_rejects_bad_sample_weight_and_stays_unfitted(bad_value):
+    model = LinearRegression()
+    with pytest.raises(ValueError, match="sample_weight"):
+        model.fit([[1.0], [2.0], [3.0]], [1.0, 2.0, 3.0], sample_weight=bad_value)
+
+    assert not hasattr(model, "coef_")
+
+
+def test_weighted_score_uses_weighted_mean_and_residuals():
+    model = _fitted_model(0.0, 2.0)  # z = [2, 2, 2]
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([1.0, 2.0, 3.0])
+
+    # weighted mean 2.25, SS_tot = 2.75, SS_res = 3 -> 1 - 3 / 2.75
+    result = model.score(X, y, sample_weight=np.array([1.0, 1.0, 2.0]))
+
+    assert np.isclose(result, -1 / 11)
+
+
+def test_score_rejects_bad_sample_weight():
+    model = _fitted_model(1.0, 0.0)
+    with pytest.raises(ValueError, match="sample_weight"):
+        model.score([[1.0], [2.0]], [1.0, 2.0], sample_weight=[1.0, -1.0])
