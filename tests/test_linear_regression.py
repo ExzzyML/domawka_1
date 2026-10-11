@@ -250,3 +250,44 @@ def test_analytic_and_gradient_solvers_agree():
     assert np.isclose(analytic.intercept_, -0.375)
     assert np.allclose(gradient.coef_, analytic.coef_, atol=1e-6)
     assert np.isclose(gradient.intercept_, analytic.intercept_, atol=1e-6)
+
+
+def test_fit_stops_early_when_loss_change_is_below_tol():
+    X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0]])
+    y = 2.0 * X[:, 0] - 1.0
+    model = LinearRegression(learning_rate=0.1, max_iter=5000, tol=1e-6)
+
+    model.fit(X, y)
+
+    changes = np.abs(np.diff(model.loss_history_))
+    assert model.n_iter_ < model.max_iter
+    assert len(model.loss_history_) == model.n_iter_
+    assert changes[-1] < 1e-6
+    assert np.all(changes[:-1] >= 1e-6)
+
+
+def test_fit_rejects_mismatched_x_and_y_and_stays_unfitted():
+    model = LinearRegression()
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([1.0, 2.0])
+
+    with pytest.raises(ValueError, match="samples"):
+        model.fit(X, y)
+
+    assert not hasattr(model, "coef_")
+
+
+def test_default_params_and_no_weights_before_fit():
+    model = LinearRegression()
+
+    assert vars(model) == {
+        "fit_intercept": True,
+        "solver": "gradient",
+        "penalty": None,
+        "alpha": 0.0,
+        "learning_rate": 0.01,
+        "max_iter": 1000,
+        "tol": 1e-6,
+        "verbose": False,
+        "random_state": None,
+    }

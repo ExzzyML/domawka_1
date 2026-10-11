@@ -423,3 +423,106 @@ def test_l1_penalty_does_not_regularize_intercept():
 
     assert abs(model.coef_[0]) < 0.1
     assert model.intercept_ > 1.0
+
+
+def test_fit_stops_early_when_loss_change_is_below_tol():
+    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    model = LogisticRegression(learning_rate=0.5, max_iter=1000, tol=1e-3)
+
+    model.fit(X, y)
+
+    changes = np.abs(np.diff(model.loss_history_))
+    assert model.n_iter_ < model.max_iter
+    assert len(model.loss_history_) == model.n_iter_
+    assert changes[-1] < 1e-3
+    assert np.all(changes[:-1] >= 1e-3)
+
+
+def test_fit_runs_all_iterations_when_tol_is_zero():
+    X = np.array([[-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    model = LogisticRegression(learning_rate=0.5, max_iter=30, tol=0.0)
+
+    model.fit(X, y)
+
+    assert model.n_iter_ == 30
+    assert len(model.loss_history_) == 30
+
+
+def test_fit_rejects_mismatched_x_and_y_and_stays_unfitted():
+    model = LogisticRegression()
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([0.0, 1.0])
+
+    with pytest.raises(ValueError, match="samples"):
+        model.fit(X, y)
+
+    assert not hasattr(model, "coef_")
+
+
+def test_default_params_and_no_weights_before_fit():
+    model = LogisticRegression()
+
+    assert vars(model) == {
+        "fit_intercept": True,
+        "solver": "gradient",
+        "penalty": None,
+        "alpha": 0.0,
+        "learning_rate": 0.01,
+        "max_iter": 1000,
+        "tol": 1e-6,
+        "verbose": False,
+        "random_state": None,
+        "threshold": 0.5,
+    }
+
+
+@pytest.mark.parametrize(
+    "penalty, alpha, expected",
+    [
+        (None, 0.0, 0.65001),
+        ("l2", 2.0, 0.71251),
+        ("l1", 2.0, 1.15001),
+    ],
+)
+def test_first_loss_history_value_includes_penalty(penalty, alpha, expected):
+    X = np.array([[1.0], [2.0]])
+    y = np.array([1.0, 0.0])
+    model = LogisticRegression(
+        learning_rate=1.0, max_iter=1, penalty=penalty, alpha=alpha
+    )
+
+    model.fit(X, y)
+
+    assert len(model.loss_history_) == 1
+    assert np.isclose(model.loss_history_[0], expected, atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [5.0, -1.0, float("nan"), True, None, "abc"],
+)
+def test_predict_rejects_invalid_threshold(bad_value):
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    model.threshold = bad_value
+
+    with pytest.raises(ValueError, match="threshold"):
+        model.predict(np.array([[1.0]]))
+
+
+def test_predict_proba_does_not_depend_on_threshold():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = 0.0
+    model.threshold = "abc"
+    X = np.array([[-2.0], [0.0], [2.0]])
+
+    proba = model.predict_proba(X)
+
+    assert np.allclose(
+        proba,
+        [[0.8807970780, 0.1192029220], [0.5, 0.5], [0.1192029220, 0.8807970780]],
+    )
