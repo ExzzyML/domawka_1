@@ -474,6 +474,7 @@ def test_default_params_and_no_weights_before_fit():
         "tol": 1e-6,
         "verbose": False,
         "random_state": None,
+        "l1_ratio": 0.5,
         "threshold": 0.5,
     }
 
@@ -550,3 +551,14 @@ def test_score_requires_fitted_model():
 def test_score_rejects_y_with_wrong_length():
     with pytest.raises(ValueError, match="same length"):
         _fitted_logistic().score([[1.0], [2.0]], [1])
+
+
+def test_elasticnet_with_l1_ratio_one_equals_l1():
+    X = np.array([[0.0, 1.0], [1.0, 0.0], [2.0, 2.0], [3.0, 1.0]])
+    y = np.array([0, 0, 1, 1])
+    mixed = LogisticRegression(penalty="elasticnet", l1_ratio=1.0, alpha=0.05).fit(X, y)
+    pure = LogisticRegression(penalty="l1", alpha=0.05).fit(X, y)
+
+    assert np.allclose(mixed.coef_, pure.coef_)
+    assert np.isclose(mixed.intercept_, pure.intercept_)
+    assert mixed.n_iter_ == pure.n_iter_

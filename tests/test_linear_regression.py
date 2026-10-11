@@ -290,6 +290,7 @@ def test_default_params_and_no_weights_before_fit():
         "tol": 1e-6,
         "verbose": False,
         "random_state": None,
+        "l1_ratio": 0.5,
     }
 
 
@@ -347,3 +348,40 @@ def test_score_rejects_2d_y():
     model = _fitted_model(1.0, 0.0)
     with pytest.raises(ValueError, match="1-D"):
         model.score([[1.0], [2.0]], [[1.0], [2.0]])
+
+
+def test_analytic_solver_rejects_elasticnet():
+    model = LinearRegression(solver="analytic", penalty="elasticnet", alpha=0.1)
+    with pytest.raises(ValueError, match="analytic"):
+        model.fit([[1.0], [2.0]], [1.0, 2.0])
+
+
+def test_elasticnet_with_l1_ratio_zero_equals_l2():
+    X = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 5.0], [4.0, 3.0]])
+    y = np.array([1.0, 2.0, 4.0, 5.0])
+    mixed = LinearRegression(penalty="elasticnet", l1_ratio=0.0, alpha=0.1).fit(X, y)
+    pure = LinearRegression(penalty="l2", alpha=0.1).fit(X, y)
+
+    assert np.allclose(mixed.coef_, pure.coef_)
+    assert np.isclose(mixed.intercept_, pure.intercept_)
+    assert mixed.n_iter_ == pure.n_iter_
+
+
+def test_elasticnet_matches_sklearn_reference():
+    # Эталон получен из sklearn.linear_model.ElasticNet(alpha=0.1, l1_ratio=0.5,
+    # tol=1e-12) на тех же данных. Субградиент даёт малые, но не точные нули,
+    # поэтому допуск 1e-3.
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(30, 3))
+    y = X @ np.array([2.0, 0.0, -1.0]) + 0.5
+    model = LinearRegression(
+        penalty="elasticnet",
+        l1_ratio=0.5,
+        alpha=0.1,
+        learning_rate=0.05,
+        max_iter=1000,
+        tol=0.0,
+    ).fit(X, y)
+
+    assert np.allclose(model.coef_, [1.87145047, 0.0, -0.83291678], atol=1e-3)
+    assert np.isclose(model.intercept_, 0.43046137, atol=1e-3)

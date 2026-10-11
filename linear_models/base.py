@@ -27,10 +27,11 @@ class BaseLinearModel(ABC):
     """Общая основа линейных моделей: параметры, проверки и градиентный спуск.
 
     Параметры: fit_intercept (обучать свободный член), solver ("gradient" или
-    "analytic"), penalty (None, "l1" или "l2"), alpha (сила штрафа, >= 0),
-    learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
+    "analytic"), penalty (None, "l1", "l2" или "elasticnet"), alpha (сила штрафа,
+    >= 0), learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
     tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
-    verbose и random_state (принимаются, но не используются).
+    verbose и random_state (принимаются, но не используются), l1_ratio (доля L1
+    в штрафе "elasticnet", число из [0, 1]; при других penalty не используется).
 
     После fit доступны coef_, intercept_, n_iter_ и loss_history_.
     """
@@ -46,6 +47,7 @@ class BaseLinearModel(ABC):
         tol=1e-6,
         verbose=False,
         random_state=None,
+        l1_ratio=0.5,
     ):
         self.fit_intercept = fit_intercept
         self.solver = solver
@@ -56,6 +58,7 @@ class BaseLinearModel(ABC):
         self.tol = tol
         self.verbose = verbose
         self.random_state = random_state
+        self.l1_ratio = l1_ratio
 
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
@@ -68,6 +71,10 @@ class BaseLinearModel(ABC):
             return self.alpha * 0.5 * np.sum(self.coef_**2)
         if self.penalty == "l1":
             return self.alpha * np.sum(np.abs(self.coef_))
+        if self.penalty == "elasticnet":
+            l1 = np.sum(np.abs(self.coef_))
+            l2 = 0.5 * np.sum(self.coef_**2)
+            return self.alpha * (self.l1_ratio * l1 + (1 - self.l1_ratio) * l2)
 
     def _penalty_gradient(self):
         """Градиент штрафа по w (массив формы coef_). intercept_ не участвует."""
@@ -77,6 +84,10 @@ class BaseLinearModel(ABC):
             return self.alpha * self.coef_
         if self.penalty == "l1":
             return self.alpha * np.sign(self.coef_)
+        if self.penalty == "elasticnet":
+            l1_part = self.l1_ratio * np.sign(self.coef_)
+            l2_part = (1 - self.l1_ratio) * self.coef_
+            return self.alpha * (l1_part + l2_part)
 
     def _objective(self, X, y):
         """Полная цель J = потери на данных + штраф (число)."""
@@ -105,9 +116,10 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 f"solver must be 'gradient' or 'analytic', got {self.solver!r}"
             )
-        if self.penalty not in (None, "l1", "l2"):
+        if self.penalty not in (None, "l1", "l2", "elasticnet"):
             raise ValueError(
-                f"penalty must be None, 'l1' or 'l2', got {self.penalty!r}"
+                "penalty must be None, 'l1', 'l2' or 'elasticnet', "
+                f"got {self.penalty!r}"
             )
         if not _is_number(self.learning_rate) or self.learning_rate <= 0:
             raise ValueError(
@@ -119,6 +131,10 @@ class BaseLinearModel(ABC):
             raise ValueError(f"tol must be a non-negative number, got {self.tol!r}")
         if not _is_number(self.alpha) or self.alpha < 0:
             raise ValueError(f"alpha must be a non-negative number, got {self.alpha!r}")
+        if not _is_number(self.l1_ratio) or not 0 <= self.l1_ratio <= 1:
+            raise ValueError(
+                f"l1_ratio must be a number in [0, 1], got {self.l1_ratio!r}"
+            )
 
     def _validate_X(self, X):
         X = np.asarray(X, dtype=float)
