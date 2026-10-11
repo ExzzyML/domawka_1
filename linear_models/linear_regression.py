@@ -62,6 +62,10 @@ class LinearRegression(BaseLinearModel):
                 f"solver='analytic' supports only penalty None or 'l2', "
                 f"got {self.penalty!r}"
             )
+        if self.solver == "analytic" and self.batch_size is not None:
+            raise ValueError(
+                "batch_size is not supported by solver='analytic': it has no steps"
+            )
         if self.solver == "analytic" and self.store_gradients:
             raise ValueError(
                 "store_gradients=True is not supported by solver='analytic': "

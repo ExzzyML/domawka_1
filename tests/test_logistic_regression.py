@@ -481,6 +481,8 @@ def test_default_params_and_no_weights_before_fit():
         "store_gradients": False,
         "callbacks": None,
         "threshold": 0.5,
+        "batch_size": None,
+        "shuffle": True,
     }
 
 
@@ -675,3 +677,13 @@ def test_weighted_accuracy():
     result = _fitted_logistic().score(X, y, sample_weight=[1.0, 3.0, 1.0, 1.0])
 
     assert np.isclose(result, 0.5)
+
+
+def test_logistic_mini_batch_reduces_loss():
+    X, y = _logistic_weighted_data()
+    model = LogisticRegression(
+        batch_size=2, learning_rate=0.1, max_iter=50, tol=0.0, random_state=0
+    ).fit(X, y)
+
+    assert model.n_iter_ == 50
+    assert model.loss_history_[-1] < model.loss_history_[0]

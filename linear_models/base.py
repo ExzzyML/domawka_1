@@ -30,15 +30,20 @@ class BaseLinearModel(ABC):
     "analytic"), penalty (None, "l1", "l2" или "elasticnet"), alpha (сила штрафа,
     >= 0), learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
     tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
-    verbose (печать прогресса), random_state (пока не используется), l1_ratio (доля L1
+    verbose (печать прогресса), random_state (None или целое >= 0, для перемешивания), l1_ratio (доля L1
     в штрафе "elasticnet", число из [0, 1]; при других penalty не используется).
+
     Дополнительно: momentum (коэффициент скорости β, число из [0, 1); 0.0 — обычный
     спуск), lr_schedule (None, "exponential" или "inverse_time": шаг убывает с номером
     итерации) и lr_decay (параметр убывания, число > 0, для "exponential" не больше 1).
     store_gradients (True: сохранить gradient_history_ формы (n_iter_, d + 1), строка
     i градиент цели перед шагом i, последний столбец интерцепт), callbacks (список
     функций cb(model, iteration, loss), вызываются после каждой итерации; True из
-    функции останавливает обучение). verbose=True печатает прогресс.
+    функции останавливает обучение). verbose=True печатает прогресс, batch_size (None:
+    градиент по всем объектам; целое >= 1: размер батча, 1 это SGD)
+    и shuffle (перемешивать объекты в каждой эпохе; random_state задаёт
+    перемешивание). При батчах итерация это эпоха: проход по данным, на каждый
+    батч один шаг; loss_history_ и n_iter_ считаются по эпохам.
 
     После fit доступны coef_, intercept_, n_iter_ и loss_history_.
     """
@@ -60,6 +65,8 @@ class BaseLinearModel(ABC):
         lr_decay=0.9,
         store_gradients=False,
         callbacks=None,
+        batch_size=None,
+        shuffle=True,
     ):
         self.fit_intercept = fit_intercept
         self.solver = solver
@@ -76,6 +83,8 @@ class BaseLinearModel(ABC):
         self.lr_decay = lr_decay
         self.store_gradients = store_gradients
         self.callbacks = callbacks
+        self.batch_size = batch_size
+        self.shuffle = shuffle
 
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
@@ -119,28 +128,52 @@ class BaseLinearModel(ABC):
         if self.lr_schedule == "inverse_time":
             return self.learning_rate / (1 + self.lr_decay * t)
 
+    def _epoch_batches(self, n_samples, batch_size, rng):
+        """Батчи одной эпохи: None (все данные) или массивы индексов."""
+        if batch_size >= n_samples:
+            yield None
+            return
+        order = rng.permutation(n_samples) if self.shuffle else np.arange(n_samples)
+        for start in range(0, n_samples, batch_size):
+            yield order[start : start + batch_size]
+
     def _fit_gradient(self, X, y, sample_weight=None):
-        """Градиентный спуск (с momentum и расписанием шага): обновляет
-        coef_ и intercept_, ведёт историю, вызывает callbacks."""
+        """Градиентный спуск по эпохам (с mini-batch, momentum и расписанием шага).
+
+        Итерация это эпоха: один проход по данным, в котором на каждый батч
+        делается один шаг. Обновляет coef_ и intercept_, ведёт историю,
+        вызывает callbacks.
+        """
         self.loss_history_ = []
         self.__dict__.pop("gradient_history_", None)
         gradients = []
         velocity_w = np.zeros_like(self.coef_)
         velocity_b = 0.0
         reason = "max_iter"
+        n_samples = X.shape[0]
+        batch_size = n_samples if self.batch_size is None else self.batch_size
+        rng = np.random.default_rng(self.random_state)
         for i in range(self.max_iter):
             lr = self._learning_rate_at(i)
-            grad_w, grad_b = self._gradient(X, y, sample_weight)
-            grad_w = grad_w + self._penalty_gradient()
-            if self.store_gradients:
-                gradients.append(
-                    np.append(grad_w, grad_b if self.fit_intercept else 0.0)
-                )
-            velocity_w = self.momentum * velocity_w + grad_w
-            self.coef_ = self.coef_ - lr * velocity_w
-            if self.fit_intercept:
-                velocity_b = self.momentum * velocity_b + grad_b
-                self.intercept_ = self.intercept_ - lr * velocity_b
+            for batch in self._epoch_batches(n_samples, batch_size, rng):
+                if batch is None:
+                    X_b, y_b, w_b = X, y, sample_weight
+                else:
+                    X_b, y_b = X[batch], y[batch]
+                    w_b = None if sample_weight is None else sample_weight[batch]
+                    if w_b is not None and np.sum(w_b) == 0:
+                        continue
+                grad_w, grad_b = self._gradient(X_b, y_b, w_b)
+                grad_w = grad_w + self._penalty_gradient()
+                if self.store_gradients:
+                    gradients.append(
+                        np.append(grad_w, grad_b if self.fit_intercept else 0.0)
+                    )
+                velocity_w = self.momentum * velocity_w + grad_w
+                self.coef_ = self.coef_ - lr * velocity_w
+                if self.fit_intercept:
+                    velocity_b = self.momentum * velocity_b + grad_b
+                    self.intercept_ = self.intercept_ - lr * velocity_b
             loss = self._objective(X, y, sample_weight)
             self.loss_history_.append(loss)
             self.n_iter_ = i + 1
@@ -222,6 +255,21 @@ class BaseLinearModel(ABC):
             raise ValueError(
                 "callbacks must be None or a list/tuple of callables, "
                 f"got {self.callbacks!r}"
+            )
+        if self.batch_size is not None and (
+            not _is_int(self.batch_size) or self.batch_size < 1
+        ):
+            raise ValueError(
+                f"batch_size must be None or an integer >= 1, got {self.batch_size!r}"
+            )
+        if self.shuffle is not True and self.shuffle is not False:
+            raise ValueError(f"shuffle must be True or False, got {self.shuffle!r}")
+        if self.random_state is not None and (
+            not _is_int(self.random_state) or self.random_state < 0
+        ):
+            raise ValueError(
+                f"random_state must be None or an integer >= 0, "
+                f"got {self.random_state!r}"
             )
         if not _is_number(self.l1_ratio) or not 0 <= self.l1_ratio <= 1:
             raise ValueError(

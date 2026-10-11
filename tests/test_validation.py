@@ -700,3 +700,68 @@ def test_fit_gradient_passes_sample_weight_to_loss_and_gradient():
 
     assert len(model.seen) == 4
     assert all(seen is weights for seen in model.seen)
+
+
+def test_default_batch_size_shuffle_and_random_state():
+    model = DummyModel()
+
+    assert model.batch_size is None
+    assert model.shuffle is True
+    assert model.random_state is None
+
+
+@pytest.mark.parametrize("bad_value", [0, -1, 1.5, "2", True, float("nan")])
+def test_invalid_batch_size_raises(bad_value):
+    model = DummyModel(batch_size=bad_value)
+    with pytest.raises(ValueError, match="batch_size"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [None, 1, 5, np.int64(3)])
+def test_valid_batch_size_accepted(good_value):
+    DummyModel(batch_size=good_value)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [1, 0, "yes", None])
+def test_invalid_shuffle_raises(bad_value):
+    model = DummyModel(shuffle=bad_value)
+    with pytest.raises(ValueError, match="shuffle"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [-1, 1.5, "a", True, float("nan")])
+def test_invalid_random_state_raises(bad_value):
+    model = DummyModel(random_state=bad_value)
+    with pytest.raises(ValueError, match="random_state"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [None, 0, 42, np.int64(7)])
+def test_valid_random_state_accepted(good_value):
+    DummyModel(random_state=good_value)._validate_params()
+
+
+def _batches(n_samples, batch_size, **params):
+    model = DummyModel(**params)
+    rng = np.random.default_rng(params.get("random_state"))
+    return list(model._epoch_batches(n_samples, batch_size, rng))
+
+
+def test_epoch_batches_without_shuffle_keep_order_and_last_is_smaller():
+    result = _batches(5, 2, shuffle=False)
+
+    assert [list(b) for b in result] == [[0, 1], [2, 3], [4]]
+
+
+@pytest.mark.parametrize("batch_size", [5, 8])
+def test_epoch_batches_full_batch_is_a_single_none(batch_size):
+    assert _batches(5, batch_size) == [None]
+
+
+def test_epoch_batches_with_shuffle_are_a_reproducible_permutation():
+    first = _batches(7, 3, shuffle=True, random_state=0)
+    second = _batches(7, 3, shuffle=True, random_state=0)
+
+    assert [len(b) for b in first] == [3, 3, 1]
+    assert sorted(np.concatenate(first)) == list(range(7))
+    assert all(np.array_equal(a, b) for a, b in zip(first, second))
