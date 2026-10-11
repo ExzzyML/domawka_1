@@ -291,3 +291,59 @@ def test_default_params_and_no_weights_before_fit():
         "verbose": False,
         "random_state": None,
     }
+
+
+def _fitted_model(coef, intercept):
+    model = LinearRegression()
+    model.coef_ = np.array([coef])
+    model.intercept_ = intercept
+    return model
+
+
+def test_score_is_zero_when_predicting_the_mean():
+    model = _fitted_model(0.0, 2.0)  # z = [2, 2, 2]
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([1.0, 2.0, 3.0])
+
+    assert np.isclose(model.score(X, y), 0.0)
+
+
+def test_score_is_negative_for_worse_than_mean():
+    model = _fitted_model(-1.0, 3.0)  # z = [3, 2, 1]
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([1.0, 2.0, 3.0])
+
+    assert np.isclose(model.score(X, y), -3.0)
+
+
+def test_score_is_one_for_perfect_fit():
+    model = _fitted_model(1.0, 1.0)  # z = [1, 2, 3]
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([1.0, 2.0, 3.0])
+
+    assert np.isclose(model.score(X, y), 1.0)
+
+
+def test_score_constant_target_follows_sklearn():
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([5.0, 5.0, 5.0])
+
+    assert _fitted_model(0.0, 5.0).score(X, y) == 1.0
+    assert _fitted_model(0.0, 4.0).score(X, y) == 0.0
+
+
+def test_score_requires_fitted_model():
+    with pytest.raises(NotFittedError):
+        LinearRegression().score([[1.0]], [1.0])
+
+
+def test_score_rejects_y_with_wrong_length():
+    model = _fitted_model(1.0, 0.0)
+    with pytest.raises(ValueError, match="same length"):
+        model.score([[1.0], [2.0]], [1.0])
+
+
+def test_score_rejects_2d_y():
+    model = _fitted_model(1.0, 0.0)
+    with pytest.raises(ValueError, match="1-D"):
+        model.score([[1.0], [2.0]], [[1.0], [2.0]])

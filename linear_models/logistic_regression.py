@@ -86,3 +86,8 @@ class LogisticRegression(BaseLinearModel):
         grad_w = (X.T @ residual) / n
         grad_b = np.sum(residual) / n
         return grad_w, grad_b
+
+    def score(self, X, y):
+        """Accuracy: доля верно предсказанных классов."""
+        X, y = self._validate_score_input(X, y)
+        return float(np.mean(self.predict(X) == y))

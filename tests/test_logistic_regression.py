@@ -526,3 +526,27 @@ def test_predict_proba_does_not_depend_on_threshold():
         proba,
         [[0.8807970780, 0.1192029220], [0.5, 0.5], [0.1192029220, 0.8807970780]],
     )
+
+
+def _fitted_logistic():
+    model = LogisticRegression()
+    model.coef_ = np.array([1.0])
+    model.intercept_ = -1.5  # z = x - 1.5, predict = [0, 0, 1, 1]
+    return model
+
+
+def test_score_is_accuracy():
+    X = np.array([[0.0], [1.0], [2.0], [3.0]])
+    y = np.array([0, 1, 1, 1])
+
+    assert np.isclose(_fitted_logistic().score(X, y), 0.75)
+
+
+def test_score_requires_fitted_model():
+    with pytest.raises(NotFittedError):
+        LogisticRegression().score([[1.0]], [1])
+
+
+def test_score_rejects_y_with_wrong_length():
+    with pytest.raises(ValueError, match="same length"):
+        _fitted_logistic().score([[1.0], [2.0]], [1])
