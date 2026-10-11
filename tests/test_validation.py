@@ -328,3 +328,50 @@ def test_fit_gradient_keeps_intercept_when_fit_intercept_is_false():
     assert model.intercept_ == 2.0
     assert model.n_iter_ == 1
     assert np.allclose(model.loss_history_, [4.5])
+
+
+def _elasticnet_model(l1_ratio, penalty="elasticnet"):
+    model = DummyModel(penalty=penalty, alpha=0.1, l1_ratio=l1_ratio)
+    model.coef_ = np.array([3.0, -4.0])
+    model.intercept_ = 100.0
+    return model
+
+
+def test_penalty_loss_elasticnet():
+    # alpha * (0.25 * 7 + 0.75 * 0.5 * 25) = 0.1 * 11.125
+    assert np.isclose(_elasticnet_model(0.25)._penalty_loss(), 1.1125)
+
+
+def test_penalty_gradient_elasticnet():
+    # 0.1 * (0.25 * sign(w) + 0.75 * w) = 0.1 * [2.5, -3.25]
+    result = _elasticnet_model(0.25)._penalty_gradient()
+
+    assert result.shape == (2,)
+    assert np.allclose(result, [0.25, -0.325])
+
+
+@pytest.mark.parametrize("l1_ratio, penalty", [(0.0, "l2"), (1.0, "l1")])
+def test_elasticnet_edges_match_pure_penalties(l1_ratio, penalty):
+    mixed = _elasticnet_model(l1_ratio)
+    pure = _elasticnet_model(0.5, penalty=penalty)
+
+    assert np.isclose(mixed._penalty_loss(), pure._penalty_loss())
+    assert np.allclose(mixed._penalty_gradient(), pure._penalty_gradient())
+
+
+def test_default_l1_ratio_is_half():
+    assert DummyModel().l1_ratio == 0.5
+
+
+@pytest.mark.parametrize(
+    "bad_value", [-0.1, 1.1, "0.5", None, True, float("nan"), float("inf")]
+)
+def test_invalid_l1_ratio_raises(bad_value):
+    model = DummyModel(penalty="elasticnet", l1_ratio=bad_value)
+    with pytest.raises(ValueError, match="l1_ratio"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [0, 0.0, 0.3, 1, 1.0, np.float64(0.7)])
+def test_valid_l1_ratio_accepted(good_value):
+    DummyModel(penalty="elasticnet", l1_ratio=good_value)._validate_params()
