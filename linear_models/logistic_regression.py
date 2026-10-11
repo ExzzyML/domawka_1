@@ -58,7 +58,7 @@ class LogisticRegression(BaseLinearModel):
 
     def predict(self, X):
         """Вернуть классы 0 и 1 (тип int): 1, если P(1) > threshold."""
-        
+
         self._validate_threshold()
         p1 = self.predict_proba(X)[:, 1]
         return (p1 > self.threshold).astype(int)

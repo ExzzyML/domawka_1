@@ -56,7 +56,7 @@ class LinearRegression(BaseLinearModel):
 
     def predict(self, X):
         """Вернуть предсказания z = X @ coef_ + intercept_ формы (n,)."""
-        
+
         X = self._validate_predict_input(X)
         return self._linear_output(X)
 
