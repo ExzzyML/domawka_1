@@ -475,6 +475,9 @@ def test_default_params_and_no_weights_before_fit():
         "verbose": False,
         "random_state": None,
         "l1_ratio": 0.5,
+        "momentum": 0.0,
+        "lr_schedule": None,
+        "lr_decay": 0.9,
         "threshold": 0.5,
     }
 

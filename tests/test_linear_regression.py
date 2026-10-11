@@ -291,6 +291,9 @@ def test_default_params_and_no_weights_before_fit():
         "verbose": False,
         "random_state": None,
         "l1_ratio": 0.5,
+        "momentum": 0.0,
+        "lr_schedule": None,
+        "lr_decay": 0.9,
     }
 
 
@@ -385,3 +388,25 @@ def test_elasticnet_matches_sklearn_reference():
 
     assert np.allclose(model.coef_, [1.87145047, 0.0, -0.83291678], atol=1e-3)
     assert np.isclose(model.intercept_, 0.43046137, atol=1e-3)
+
+
+def test_momentum_speeds_up_ill_conditioned_problem():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(50, 2)) * np.array([1.0, 0.1])
+    y = X @ np.array([1.0, 10.0])
+    params = {"learning_rate": 0.1, "max_iter": 200, "tol": 0.0}
+    plain = LinearRegression(**params).fit(X, y)
+    heavy = LinearRegression(momentum=0.9, **params).fit(X, y)
+
+    assert heavy.loss_history_[-1] < 0.1 * plain.loss_history_[-1]
+
+
+def test_fit_twice_with_momentum_gives_same_result():
+    X = np.array([[1.0], [2.0], [3.0]])
+    y = np.array([2.0, 4.0, 6.0])
+    model = LinearRegression(momentum=0.9, max_iter=20, tol=0.0)
+
+    first = model.fit(X, y).coef_.copy()
+    second = model.fit(X, y).coef_.copy()
+
+    assert np.array_equal(first, second)
