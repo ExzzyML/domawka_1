@@ -53,6 +53,11 @@ class LinearRegression(BaseLinearModel):
                 f"solver='analytic' supports only penalty None or 'l2', "
                 f"got {self.penalty!r}"
             )
+        if self.solver == "analytic" and self.store_gradients:
+            raise ValueError(
+                "store_gradients=True is not supported by solver='analytic': "
+                "it has no iterations"
+            )
 
     def predict(self, X):
         """Вернуть предсказания z = X @ coef_ + intercept_ формы (n,)."""

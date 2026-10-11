@@ -478,6 +478,8 @@ def test_default_params_and_no_weights_before_fit():
         "momentum": 0.0,
         "lr_schedule": None,
         "lr_decay": 0.9,
+        "store_gradients": False,
+        "callbacks": None,
         "threshold": 0.5,
     }
 
@@ -565,3 +567,11 @@ def test_elasticnet_with_l1_ratio_one_equals_l1():
     assert np.allclose(mixed.coef_, pure.coef_)
     assert np.isclose(mixed.intercept_, pure.intercept_)
     assert mixed.n_iter_ == pure.n_iter_
+
+
+def test_gradient_history_of_logistic_regression():
+    X = np.array([[0.0, 1.0], [1.0, 0.0], [2.0, 2.0], [3.0, 1.0]])
+    y = np.array([0, 0, 1, 1])
+    model = LogisticRegression(store_gradients=True, max_iter=20, tol=0.0).fit(X, y)
+
+    assert model.gradient_history_.shape == (20, 3)
