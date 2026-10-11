@@ -60,6 +60,16 @@ class LinearRegression(BaseLinearModel):
         X = self._validate_predict_input(X)
         return self._linear_output(X)
 
+    def score(self, X, y):
+        """Коэффициент детерминации R^2 = 1 - SS_res / SS_tot."""
+        X, y = self._validate_score_input(X, y)
+        y = y.astype(float)
+        ss_res = np.sum((y - self.predict(X)) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        if ss_tot == 0.0:
+            return 1.0 if ss_res == 0.0 else 0.0
+        return float(1.0 - ss_res / ss_tot)
+
     def _residual(self, X, y):
         residual = self._linear_output(X) - y
         return residual

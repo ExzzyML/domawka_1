@@ -156,6 +156,17 @@ class BaseLinearModel(ABC):
             )
         return X
 
+    def _validate_score_input(self, X, y):
+        X = self._validate_predict_input(X)
+        y = np.asarray(y)
+        if y.ndim != 1:
+            raise ValueError(f"y must be 1-D, got {y.ndim}-D")
+        if len(y) != X.shape[0]:
+            raise ValueError(
+                f"X and y must have the same length, got {X.shape[0]} and {len(y)}"
+            )
+        return X, y
+
     @abstractmethod
     def fit(self, X, y):
         """Обучить модель и вернуть self."""
