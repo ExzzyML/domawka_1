@@ -32,6 +32,9 @@ class BaseLinearModel(ABC):
     tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
     verbose и random_state (принимаются, но не используются), l1_ratio (доля L1
     в штрафе "elasticnet", число из [0, 1]; при других penalty не используется).
+    Дополнительно: momentum (коэффициент скорости β, число из [0, 1); 0.0 — обычный
+    спуск), lr_schedule (None, "exponential" или "inverse_time": шаг убывает с номером
+    итерации) и lr_decay (параметр убывания, число > 0, для "exponential" не больше 1).
 
     После fit доступны coef_, intercept_, n_iter_ и loss_history_.
     """
@@ -48,6 +51,9 @@ class BaseLinearModel(ABC):
         verbose=False,
         random_state=None,
         l1_ratio=0.5,
+        momentum=0.0,
+        lr_schedule=None,
+        lr_decay=0.9,
     ):
         self.fit_intercept = fit_intercept
         self.solver = solver
@@ -59,6 +65,9 @@ class BaseLinearModel(ABC):
         self.verbose = verbose
         self.random_state = random_state
         self.l1_ratio = l1_ratio
+        self.momentum = momentum
+        self.lr_schedule = lr_schedule
+        self.lr_decay = lr_decay
 
     def _linear_output(self, X):
         return X @ self.coef_ + self.intercept_
@@ -93,15 +102,30 @@ class BaseLinearModel(ABC):
         """Полная цель J = потери на данных + штраф (число)."""
         return self._loss(X, y) + self._penalty_loss()
 
+    def _learning_rate_at(self, t):
+        """Шаг на итерации t (t = 0, 1, ...) с учётом расписания."""
+        if self.lr_schedule is None:
+            return self.learning_rate
+        if self.lr_schedule == "exponential":
+            return self.learning_rate * self.lr_decay**t
+        if self.lr_schedule == "inverse_time":
+            return self.learning_rate / (1 + self.lr_decay * t)
+
     def _fit_gradient(self, X, y):
-        """Градиентный спуск: обновляет coef_ и intercept_, ведёт историю."""
+        """Градиентный спуск (с momentum и расписанием шага): обновляет
+        coef_ и intercept_, ведёт историю."""
         self.loss_history_ = []
+        velocity_w = np.zeros_like(self.coef_)
+        velocity_b = 0.0
         for i in range(self.max_iter):
+            lr = self._learning_rate_at(i)
             grad_w, grad_b = self._gradient(X, y)
             grad_w = grad_w + self._penalty_gradient()
-            self.coef_ = self.coef_ - self.learning_rate * grad_w
+            velocity_w = self.momentum * velocity_w + grad_w
+            self.coef_ = self.coef_ - lr * velocity_w
             if self.fit_intercept:
-                self.intercept_ = self.intercept_ - self.learning_rate * grad_b
+                velocity_b = self.momentum * velocity_b + grad_b
+                self.intercept_ = self.intercept_ - lr * velocity_b
             self.loss_history_.append(self._objective(X, y))
             self.n_iter_ = i + 1
             if (
@@ -131,6 +155,24 @@ class BaseLinearModel(ABC):
             raise ValueError(f"tol must be a non-negative number, got {self.tol!r}")
         if not _is_number(self.alpha) or self.alpha < 0:
             raise ValueError(f"alpha must be a non-negative number, got {self.alpha!r}")
+        if self.lr_schedule not in (None, "exponential", "inverse_time"):
+            raise ValueError(
+                "lr_schedule must be None, 'exponential' or 'inverse_time', "
+                f"got {self.lr_schedule!r}"
+            )
+        if not _is_number(self.lr_decay) or self.lr_decay <= 0:
+            raise ValueError(
+                f"lr_decay must be a positive number, got {self.lr_decay!r}"
+            )
+        if self.lr_schedule == "exponential" and self.lr_decay > 1:
+            raise ValueError(
+                "lr_decay must be <= 1 for lr_schedule='exponential', "
+                f"got {self.lr_decay!r}"
+            )
+        if not _is_number(self.momentum) or not 0 <= self.momentum < 1:
+            raise ValueError(
+                f"momentum must be a number in [0, 1), got {self.momentum!r}"
+            )
         if not _is_number(self.l1_ratio) or not 0 <= self.l1_ratio <= 1:
             raise ValueError(
                 f"l1_ratio must be a number in [0, 1], got {self.l1_ratio!r}"

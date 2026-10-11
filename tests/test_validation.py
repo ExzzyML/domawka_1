@@ -375,3 +375,96 @@ def test_invalid_l1_ratio_raises(bad_value):
 @pytest.mark.parametrize("good_value", [0, 0.0, 0.3, 1, 1.0, np.float64(0.7)])
 def test_valid_l1_ratio_accepted(good_value):
     DummyModel(penalty="elasticnet", l1_ratio=good_value)._validate_params()
+
+
+def _quadratic_after_three_steps(**params):
+    model = QuadraticModel(learning_rate=0.5, max_iter=3, tol=0.0, **params)
+    model.coef_ = np.array([4.0, -2.0])
+    model.intercept_ = 2.0
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+    model._fit_gradient(X, y)
+    return model
+
+
+def test_default_momentum_and_schedule():
+    model = DummyModel()
+
+    assert model.momentum == 0.0
+    assert model.lr_schedule is None
+    assert model.lr_decay == 0.9
+
+
+def test_fit_gradient_with_momentum_overshoots_minimum():
+    # v = 0.5 * v + g, w = w - 0.5 * v; для w0 = 4: 4 -> 2 -> 0 -> -1
+    model = _quadratic_after_three_steps(momentum=0.5)
+
+    assert np.allclose(model.coef_, [-1.0, 0.5])
+    assert np.isclose(model.intercept_, -0.5)
+    assert np.allclose(model.loss_history_, [3.0, 0.0, 0.75])
+
+
+def test_fit_gradient_with_exponential_schedule():
+    # шаги 0.5, 0.25, 0.125; для w0 = 4: 4 -> 2 -> 1.5 -> 1.3125
+    model = _quadratic_after_three_steps(lr_schedule="exponential", lr_decay=0.5)
+
+    assert np.allclose(model.coef_, [1.3125, -0.65625])
+    assert np.isclose(model.intercept_, 0.65625)
+    assert np.allclose(model.loss_history_, [3.0, 1.6875, 1.2919921875])
+
+
+@pytest.mark.parametrize(
+    "schedule, decay, expected",
+    [
+        (None, 0.5, [0.5, 0.5, 0.5]),
+        ("exponential", 0.5, [0.5, 0.25, 0.125]),
+        ("inverse_time", 1.0, [0.5, 0.25, 0.5 / 3]),
+    ],
+)
+def test_learning_rate_at(schedule, decay, expected):
+    model = DummyModel(learning_rate=0.5, lr_schedule=schedule, lr_decay=decay)
+
+    result = [model._learning_rate_at(t) for t in range(3)]
+
+    assert np.allclose(result, expected)
+
+
+@pytest.mark.parametrize("bad_value", [-0.1, 1.0, 1.5, "0.5", None, True, float("nan")])
+def test_invalid_momentum_raises(bad_value):
+    model = DummyModel(momentum=bad_value)
+    with pytest.raises(ValueError, match="momentum"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [0, 0.0, 0.5, 0.99, np.float64(0.9)])
+def test_valid_momentum_accepted(good_value):
+    DummyModel(momentum=good_value)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", ["banana", 1, True, "Exponential"])
+def test_invalid_lr_schedule_raises(bad_value):
+    model = DummyModel(lr_schedule=bad_value)
+    with pytest.raises(ValueError, match="lr_schedule"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [None, "exponential", "inverse_time"])
+def test_valid_lr_schedule_accepted(good_value):
+    DummyModel(lr_schedule=good_value)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [0, -0.5, "0.5", None, True, float("nan")])
+def test_invalid_lr_decay_raises(bad_value):
+    model = DummyModel(lr_decay=bad_value)
+    with pytest.raises(ValueError, match="lr_decay"):
+        model._validate_params()
+
+
+def test_exponential_decay_above_one_raises():
+    model = DummyModel(lr_schedule="exponential", lr_decay=1.5)
+    with pytest.raises(ValueError, match="lr_decay"):
+        model._validate_params()
+
+
+def test_inverse_time_decay_above_one_is_valid():
+    DummyModel(lr_schedule="inverse_time", lr_decay=1.5)._validate_params()
