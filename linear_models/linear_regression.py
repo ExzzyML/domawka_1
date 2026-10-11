@@ -4,7 +4,15 @@ from linear_models.base import BaseLinearModel
 
 
 class LinearRegression(BaseLinearModel):
+    """Линейная регрессия: z = X @ coef_ + intercept_, потери 1/(2n) * сумма (z - y)^2.
+
+    solver="analytic" даёт точное решение (penalty None или "l2"),
+    solver="gradient" работает с любым penalty.
+    """
+
     def fit(self, X, y):
+        """Обучить модель на X формы (n, d) и y формы (n,); вернуть self."""
+
         self._validate_params()
         self._validate_solver_penalty()
         X, y = self._validate_X_y(X, y)
@@ -47,6 +55,8 @@ class LinearRegression(BaseLinearModel):
             )
 
     def predict(self, X):
+        """Вернуть предсказания z = X @ coef_ + intercept_ формы (n,)."""
+
         X = self._validate_predict_input(X)
         return self._linear_output(X)
 

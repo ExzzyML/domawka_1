@@ -15,7 +15,15 @@ def _sigmoid(z):
 
 
 class LogisticRegression(BaseLinearModel):
+    """Логистическая регрессия для двух классов (0 и 1), solver только "gradient".
+
+    Потери: среднее значение log(1 + e^z) - y * z. Класс 1 присваивается,
+    если P(1) строго больше threshold (по умолчанию 0.5).
+    """
+
     def __init__(self, threshold=0.5, **kwargs):
+        """threshold: порог для predict; остальное см. BaseLinearModel."""
+
         super().__init__(**kwargs)
         self.threshold = threshold
 
@@ -30,6 +38,8 @@ class LogisticRegression(BaseLinearModel):
         self._validate_threshold()
 
     def fit(self, X, y):
+        """Обучить на X формы (n, d) и y из {0, 1} (нужны оба класса); вернуть self."""
+
         self._validate_params()
         self._validate_solver()
         X, y = self._validate_X_y(X, y)
@@ -40,11 +50,15 @@ class LogisticRegression(BaseLinearModel):
         return self
 
     def predict_proba(self, X):
+        """Вернуть вероятности формы (n, 2): столбцы P(класс 0) и P(класс 1)."""
+
         X = self._validate_predict_input(X)
         p1 = _sigmoid(self._linear_output(X))
         return np.column_stack([1 - p1, p1])
 
     def predict(self, X):
+        """Вернуть классы 0 и 1 (тип int): 1, если P(1) > threshold."""
+
         self._validate_threshold()
         p1 = self.predict_proba(X)[:, 1]
         return (p1 > self.threshold).astype(int)
