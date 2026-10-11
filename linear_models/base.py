@@ -106,9 +106,9 @@ class BaseLinearModel(ABC):
             l2_part = (1 - self.l1_ratio) * self.coef_
             return self.alpha * (l1_part + l2_part)
 
-    def _objective(self, X, y):
+    def _objective(self, X, y, sample_weight=None):
         """Полная цель J = потери на данных + штраф (число)."""
-        return self._loss(X, y) + self._penalty_loss()
+        return self._loss(X, y, sample_weight) + self._penalty_loss()
 
     def _learning_rate_at(self, t):
         """Шаг на итерации t (t = 0, 1, ...) с учётом расписания."""
@@ -119,7 +119,7 @@ class BaseLinearModel(ABC):
         if self.lr_schedule == "inverse_time":
             return self.learning_rate / (1 + self.lr_decay * t)
 
-    def _fit_gradient(self, X, y):
+    def _fit_gradient(self, X, y, sample_weight=None):
         """Градиентный спуск (с momentum и расписанием шага): обновляет
         coef_ и intercept_, ведёт историю, вызывает callbacks."""
         self.loss_history_ = []
@@ -130,7 +130,7 @@ class BaseLinearModel(ABC):
         reason = "max_iter"
         for i in range(self.max_iter):
             lr = self._learning_rate_at(i)
-            grad_w, grad_b = self._gradient(X, y)
+            grad_w, grad_b = self._gradient(X, y, sample_weight)
             grad_w = grad_w + self._penalty_gradient()
             if self.store_gradients:
                 gradients.append(
@@ -141,7 +141,7 @@ class BaseLinearModel(ABC):
             if self.fit_intercept:
                 velocity_b = self.momentum * velocity_b + grad_b
                 self.intercept_ = self.intercept_ - lr * velocity_b
-            loss = self._objective(X, y)
+            loss = self._objective(X, y, sample_weight)
             self.loss_history_.append(loss)
             self.n_iter_ = i + 1
             if self.verbose and (i == 0 or (i + 1) % 100 == 0):
@@ -228,6 +228,39 @@ class BaseLinearModel(ABC):
                 f"l1_ratio must be a number in [0, 1], got {self.l1_ratio!r}"
             )
 
+    def _validate_sample_weight(self, sample_weight, n_samples):
+        """None остаётся None; иначе вернуть веса как float-массив (n,)."""
+        if sample_weight is None:
+            return None
+        try:
+            weights = np.asarray(sample_weight, dtype=float)
+        except (TypeError, ValueError):
+            raise ValueError("sample_weight must contain numbers") from None
+        if weights.ndim != 1:
+            raise ValueError(
+                f"sample_weight must be 1-dimensional, got ndim={weights.ndim}"
+            )
+        if weights.shape[0] != n_samples:
+            raise ValueError(
+                f"sample_weight has {weights.shape[0]} values, "
+                f"but there are {n_samples} samples"
+            )
+        if not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError("sample_weight must be finite and non-negative")
+        if np.sum(weights) <= 0:
+            raise ValueError("sample_weight must have a positive sum")
+        return weights
+
+    @staticmethod
+    def _total_weight(sample_weight, n_samples):
+        """Знаменатель средних: n без весов, иначе сумма весов."""
+        return n_samples if sample_weight is None else np.sum(sample_weight)
+
+    @staticmethod
+    def _apply_weight(values, sample_weight):
+        """values без весов, иначе sample_weight * values."""
+        return values if sample_weight is None else sample_weight * values
+
     def _validate_X(self, X):
         X = np.asarray(X, dtype=float)
         if X.ndim != 2:
@@ -276,7 +309,7 @@ class BaseLinearModel(ABC):
         return X, y
 
     @abstractmethod
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         """Обучить модель и вернуть self."""
 
     @abstractmethod
@@ -284,9 +317,12 @@ class BaseLinearModel(ABC):
         """Вернуть предсказания для X."""
 
     @abstractmethod
-    def _loss(self, X, y):
-        """Вернуть значение потерь на данных (число), без регуляризации."""
+    def _loss(self, X, y, sample_weight=None):
+        """Вернуть потери на данных (число), без регуляризации.
+
+        С весами это взвешенное среднее: деление на сумму весов, а не на n.
+        """
 
     @abstractmethod
-    def _gradient(self, X, y):
+    def _gradient(self, X, y, sample_weight=None):
         """Вернуть пару (grad_w, grad_b): градиент потерь без регуляризации."""
