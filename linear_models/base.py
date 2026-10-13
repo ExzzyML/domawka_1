@@ -133,6 +133,13 @@ class BaseLinearModel(ABC):
         if self.lr_schedule == "inverse_time":
             return self.learning_rate / (1 + self.lr_decay * t)
 
+
+def _momentum_step(self, velocity, grad):
+    velocity = self.momentum * velocity + grad
+    if self.nesterov:
+        return velocity, grad + self.momentum * velocity
+    return velocity, velocity
+
     def _epoch_batches(self, n_samples, batch_size, rng):
         """Батчи одной эпохи: None (все данные) или массивы индексов."""
         if batch_size >= n_samples:
