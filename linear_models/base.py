@@ -309,8 +309,23 @@ class BaseLinearModel(ABC):
         """values без весов, иначе sample_weight * values."""
         return values if sample_weight is None else sample_weight * values
 
+    @staticmethod
+    def _as_finite_float_array(values, name):
+        """Вернуть values как float-массив; числа обязаны быть конечными.
+
+        Строки и прочие нечисловые значения, а также NaN и ±inf дают
+        понятный ValueError с именем массива (X, y).
+        """
+        try:
+            array = np.asarray(values, dtype=float)
+        except (TypeError, ValueError):
+            raise ValueError(f"{name} must contain only numbers") from None
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} must not contain NaN or infinity")
+        return array
+
     def _validate_X(self, X):
-        X = np.asarray(X, dtype=float)
+        X = self._as_finite_float_array(X, "X")
         if X.ndim != 2:
             raise ValueError(
                 f"X must be 2-dimensional (n_samples, n_features), got ndim={X.ndim}"
@@ -319,7 +334,7 @@ class BaseLinearModel(ABC):
 
     def _validate_X_y(self, X, y):
         X = self._validate_X(X)
-        y = np.asarray(y, dtype=float)
+        y = self._as_finite_float_array(y, "y")
         if y.ndim != 1:
             raise ValueError(f"y must be 1-dimensional (n_samples,), got ndim={y.ndim}")
         if X.shape[0] != y.shape[0]:
@@ -347,6 +362,7 @@ class BaseLinearModel(ABC):
 
     def _validate_score_input(self, X, y):
         X = self._validate_predict_input(X)
+        self._as_finite_float_array(y, "y")
         y = np.asarray(y)
         if y.ndim != 1:
             raise ValueError(f"y must be 1-D, got {y.ndim}-D")

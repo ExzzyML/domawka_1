@@ -49,6 +49,7 @@ BaseLinearModel (абстрактный)
 ```
 
 - `BaseLinearModel` (`linear_models/base.py`) хранит параметры, проверяет их и входные данные, содержит общий цикл градиентного спуска `_fit_gradient`, штраф и его градиент, ранний останов, `coef_`, `intercept_`, `n_iter_`, `loss_history_`. Подклассы реализуют `fit`, `predict`, `_loss` и `_gradient`.
+- `X` и `y` должны состоять из конечных чисел: `NaN`, `±inf` и нечисловые значения дают понятный `ValueError` в `fit`, `predict` и `score`.
 - `LinearRegression` (`linear_models/linear_regression.py`): потери `1/(2n) · Σ(z − y)²`; два solver'а.
 - `LogisticRegression` (`linear_models/logistic_regression.py`): потери `mean(log(1 + e^z) − y·z)`, посчитанные через `np.logaddexp`; устойчивая сигмоида; есть `predict_proba` и порог `threshold`.
 - `NotFittedError` (наследник `ValueError`) бросается, если вызвать `predict` до `fit`.
@@ -210,7 +211,6 @@ model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 - Слишком большой `learning_rate` приводит к расходимости: `J` становится `inf` или `nan`, остановка не срабатывает.
 - На линейно разделимых данных без штрафа оптимума нет, веса растут до остановки по `tol` или `max_iter`.
 - У `analytic` вырожденная матрица (линейно зависимые признаки) даёт решение минимальной нормы без предупреждения.
-- `NaN` и `inf` в `X` и `y` не проверяются: `analytic` может завершиться ошибкой `LinAlgError`, а `gradient` вернёт веса `nan`.
 - `P(0)` считается как `1 − P(1)`, поэтому в далёком хвосте теряет точность (на классы не влияет); класс 1 присваивается при строгом `P(1) > threshold`.
 - Нет многоклассовой классификации, Nesterov-momentum и расписания `"step"`.
 
@@ -220,7 +220,7 @@ model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 pytest
 ```
 
-Настройки лежат в `pytest.ini` (`testpaths = tests`, `pythonpath = .`). Сейчас 157 тестов: параметры и входные данные (`tests/test_validation.py`), линейная (`tests/test_linear_regression.py`) и логистическая регрессии (`tests/test_logistic_regression.py`).
+Настройки лежат в `pytest.ini` (`testpaths = tests`, `pythonpath = .`). Сейчас 355 тестов: параметры и входные данные (`tests/test_validation.py`), линейная (`tests/test_linear_regression.py`) и логистическая регрессии (`tests/test_logistic_regression.py`).
 
 ## Запуск ноутбука
 

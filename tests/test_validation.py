@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 from linear_models.base import BaseLinearModel, NotFittedError
+from linear_models.linear_regression import LinearRegression
+from linear_models.logistic_regression import LogisticRegression
 
 
 class DummyModel(BaseLinearModel):
@@ -765,3 +767,68 @@ def test_epoch_batches_with_shuffle_are_a_reproducible_permutation():
     assert [len(b) for b in first] == [3, 3, 1]
     assert sorted(np.concatenate(first)) == list(range(7))
     assert all(np.array_equal(a, b) for a, b in zip(first, second))
+
+
+# --- NaN, inf и нечисловые значения во входных данных ---
+
+_BAD_NUMBERS = [float("nan"), float("inf"), -float("inf")]
+
+
+@pytest.mark.parametrize("bad", _BAD_NUMBERS)
+def test_validate_X_rejects_nan_and_inf(bad):
+    X = [[1.0, 2.0], [3.0, bad]]
+    with pytest.raises(ValueError, match="X must not contain NaN or infinity"):
+        DummyModel()._validate_X(X)
+
+
+@pytest.mark.parametrize("bad", _BAD_NUMBERS)
+def test_validate_X_y_rejects_nan_and_inf_in_y(bad):
+    X = [[1.0, 2.0], [3.0, 4.0]]
+    with pytest.raises(ValueError, match="y must not contain NaN or infinity"):
+        DummyModel()._validate_X_y(X, [1.0, bad])
+
+
+def test_validate_X_rejects_strings():
+    with pytest.raises(ValueError, match="X must contain only numbers"):
+        DummyModel()._validate_X([["a", "b"], ["c", "d"]])
+
+
+def test_validate_X_y_rejects_strings_in_y():
+    with pytest.raises(ValueError, match="y must contain only numbers"):
+        DummyModel()._validate_X_y([[1.0], [2.0]], ["a", "b"])
+
+
+def test_numeric_strings_are_still_accepted():
+    X_out, y_out = DummyModel()._validate_X_y([["1", "2"]], ["3"])
+    assert X_out.dtype == float and y_out.dtype == float
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        LinearRegression(solver="analytic"),
+        LinearRegression(solver="gradient", max_iter=5),
+        LogisticRegression(max_iter=5),
+    ],
+)
+def test_fit_rejects_nan_in_X(model):
+    X = np.array([[0.0, 1.0], [1.0, np.nan], [2.0, 0.0], [3.0, 1.0]])
+    y = np.array([0.0, 1.0, 0.0, 1.0])
+    with pytest.raises(ValueError, match="NaN or infinity"):
+        model.fit(X, y)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [LinearRegression(solver="analytic"), LogisticRegression(max_iter=5)],
+)
+def test_predict_and_score_reject_nan(model):
+    X = np.array([[0.0, 1.0], [1.0, 0.0], [2.0, 1.0], [3.0, 0.0]])
+    y = np.array([0.0, 1.0, 0.0, 1.0])
+    model.fit(X, y)
+    X_bad = X.copy()
+    X_bad[0, 0] = np.inf
+    with pytest.raises(ValueError, match="X must not contain NaN or infinity"):
+        model.predict(X_bad)
+    with pytest.raises(ValueError, match="y must not contain NaN or infinity"):
+        model.score(X, [0.0, np.nan, 0.0, 1.0])
