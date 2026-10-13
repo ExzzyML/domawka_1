@@ -144,7 +144,7 @@ def stop_when_small(model, iteration, loss):
 model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 ```
 
-**`verbose=True`.** Печатается строка `iter 1: J=...`, затем каждые 100 итераций, и в конце итог: `stopped at iteration k: J=..., reason: max_iter | tol | callback`.
+**`verbose=True`.** Печатается строка `iter 1: J=...`, затем каждые 100 итераций, и в конце итог: `stopped at iteration k: J=..., reason: max_iter | tol | callback | diverged.
 
 ## Веса объектов (`sample_weight`)
 
@@ -178,6 +178,24 @@ model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 - `tol = 0.0` отключает остановку: выполнится ровно `max_iter` итераций;
 - правило смотрит на изменение цели, а не на расстояние до решения: на плохо обусловленных данных оно срабатывает рано (см. раздел 5.3 ноутбука).
 
+## Предупреждения
+
+Градиентный спуск выдаёт `ConvergenceWarning` (наследник `UserWarning`, импорт из `linear_models.base`) в двух случаях:
+
+- **не сошёлся**: выполнено `max_iter` итераций, а изменение цели так и не стало меньше `tol`. При `tol = 0.0` предупреждения нет: останов отключён сознательно;
+- **разошёлся**: цель `J` стала `inf` или `nan` (обычно из-за слишком большого `learning_rate`). Обучение сразу останавливается, `n_iter_` равен номеру этой итерации, последнее значение `loss_history_` равно `inf` или `nan`. Предупреждения numpy о переполнении на время спуска отключены, остаётся одно понятное сообщение.
+
+Аналитический solver предупреждений не выдаёт. Скрыть предупреждение можно стандартно:
+
+```python
+import warnings
+from linear_models.base import ConvergenceWarning
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", ConvergenceWarning)
+    model.fit(X, y)
+```
+
 ## Соответствие параметрам `sklearn`
 
 Наша цель делится на `n`, поэтому `alpha` нужно пересчитывать (здесь `n` — число обучающих объектов):
@@ -208,7 +226,7 @@ model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 - Остановка по абсолютному изменению цели (`tol`), а не по норме градиента и не по расстоянию до решения.
 - L1 решается субградиентным спуском: коэффициенты малы, но точных нулей нет.
 - Веса всегда стартуют с нулей; `random_state` влияет только на перемешивание при `batch_size`.
-- Слишком большой `learning_rate` приводит к расходимости: `J` становится `inf` или `nan`, остановка не срабатывает.
+- Расходимость распознаётся только по `J = inf` или `nan`. Потери логистической регрессии растут линейно и почти никогда не доходят до `inf`, поэтому там слишком большой `learning_rate` проявляется колебаниями и `ConvergenceWarning` по `max_iter`.
 - На линейно разделимых данных без штрафа оптимума нет, веса растут до остановки по `tol` или `max_iter`.
 - У `analytic` вырожденная матрица (линейно зависимые признаки) даёт решение минимальной нормы без предупреждения.
 - `P(0)` считается как `1 − P(1)`, поэтому в далёком хвосте теряет точность (на классы не влияет); класс 1 присваивается при строгом `P(1) > threshold`.
@@ -220,7 +238,7 @@ model = LinearRegression(callbacks=[stop_when_small]).fit(X, y)
 pytest
 ```
 
-Настройки лежат в `pytest.ini` (`testpaths = tests`, `pythonpath = .`). Сейчас 355 тестов: параметры и входные данные (`tests/test_validation.py`), линейная (`tests/test_linear_regression.py`) и логистическая регрессии (`tests/test_logistic_regression.py`).
+Настройки лежат в `pytest.ini` (`testpaths = tests`, `pythonpath = .`, фильтр `ConvergenceWarning` для старых тестов, которые намеренно обрывают спуск). Сейчас 363 теста: параметры и входные данные (`tests/test_validation.py`), линейная (`tests/test_linear_regression.py`) и логистическая регрессии (`tests/test_logistic_regression.py`).
 
 ## Запуск ноутбука
 
