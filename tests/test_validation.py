@@ -395,8 +395,10 @@ def test_default_momentum_and_schedule():
     model = DummyModel()
 
     assert model.momentum == 0.0
+    assert model.nesterov is False
     assert model.lr_schedule is None
     assert model.lr_decay == 0.9
+    assert model.lr_step_size == 10
 
 
 def test_fit_gradient_with_momentum_overshoots_minimum():
@@ -406,6 +408,28 @@ def test_fit_gradient_with_momentum_overshoots_minimum():
     assert np.allclose(model.coef_, [-1.0, 0.5])
     assert np.isclose(model.intercept_, -0.5)
     assert np.allclose(model.loss_history_, [3.0, 0.0, 0.75])
+
+
+def test_fit_gradient_with_nesterov_overshoots_less():
+    # v = 0.5 * v + g, шаг по g + 0.5 * v; для w0 = 4:
+    # v = 4, шаг 6 -> w = 1; v = 3, шаг 2.5 -> w = -0.25;
+    # v = 1.25, шаг 0.375 -> w = -0.4375 (обычный момент дошёл бы до -1)
+    model = _quadratic_after_three_steps(momentum=0.5, nesterov=True)
+
+    assert np.allclose(model.coef_, [-0.4375, 0.21875])
+    assert np.isclose(model.intercept_, -0.21875)
+    assert np.allclose(model.loss_history_, [0.75, 0.046875, 0.1435546875])
+
+
+def test_fit_gradient_with_step_schedule():
+    # шаги 0.5, 0.5, 0.25 (уменьшение вдвое каждые 2 итерации); 4 -> 2 -> 1 -> 0.75
+    model = _quadratic_after_three_steps(
+        lr_schedule="step", lr_decay=0.5, lr_step_size=2
+    )
+
+    assert np.allclose(model.coef_, [0.75, -0.375])
+    assert np.isclose(model.intercept_, 0.375)
+    assert np.allclose(model.loss_history_, [3.0, 0.75, 0.421875])
 
 
 def test_fit_gradient_with_exponential_schedule():
@@ -423,10 +447,13 @@ def test_fit_gradient_with_exponential_schedule():
         (None, 0.5, [0.5, 0.5, 0.5]),
         ("exponential", 0.5, [0.5, 0.25, 0.125]),
         ("inverse_time", 1.0, [0.5, 0.25, 0.5 / 3]),
+        ("step", 0.5, [0.5, 0.5, 0.25]),
     ],
 )
 def test_learning_rate_at(schedule, decay, expected):
-    model = DummyModel(learning_rate=0.5, lr_schedule=schedule, lr_decay=decay)
+    model = DummyModel(
+        learning_rate=0.5, lr_schedule=schedule, lr_decay=decay, lr_step_size=2
+    )
 
     result = [model._learning_rate_at(t) for t in range(3)]
 
@@ -445,6 +472,49 @@ def test_valid_momentum_accepted(good_value):
     DummyModel(momentum=good_value)._validate_params()
 
 
+def test_step_schedule_with_step_size_one_equals_exponential():
+    step = DummyModel(lr_schedule="step", lr_decay=0.7, lr_step_size=1)
+    exponential = DummyModel(lr_schedule="exponential", lr_decay=0.7)
+
+    for t in range(10):
+        assert np.isclose(step._learning_rate_at(t), exponential._learning_rate_at(t))
+
+
+@pytest.mark.parametrize("bad_value", [0, 1, None, "True", np.bool_(True)])
+def test_invalid_nesterov_raises(bad_value):
+    model = DummyModel(momentum=0.9, nesterov=bad_value)
+    with pytest.raises(ValueError, match="nesterov"):
+        model._validate_params()
+
+
+def test_nesterov_without_momentum_raises():
+    model = DummyModel(nesterov=True)
+    with pytest.raises(ValueError, match="nesterov=True requires momentum > 0"):
+        model._validate_params()
+
+
+def test_nesterov_with_momentum_accepted():
+    DummyModel(momentum=0.9, nesterov=True)._validate_params()
+
+
+@pytest.mark.parametrize("bad_value", [0, -1, 2.0, "3", None, True])
+def test_invalid_lr_step_size_raises(bad_value):
+    model = DummyModel(lr_step_size=bad_value)
+    with pytest.raises(ValueError, match="lr_step_size"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize("good_value", [1, 5, np.int64(20)])
+def test_valid_lr_step_size_accepted(good_value):
+    DummyModel(lr_schedule="step", lr_step_size=good_value)._validate_params()
+
+
+def test_step_decay_above_one_raises():
+    model = DummyModel(lr_schedule="step", lr_decay=1.5)
+    with pytest.raises(ValueError, match="lr_decay"):
+        model._validate_params()
+
+
 @pytest.mark.parametrize("bad_value", ["banana", 1, True, "Exponential"])
 def test_invalid_lr_schedule_raises(bad_value):
     model = DummyModel(lr_schedule=bad_value)
@@ -452,7 +522,7 @@ def test_invalid_lr_schedule_raises(bad_value):
         model._validate_params()
 
 
-@pytest.mark.parametrize("good_value", [None, "exponential", "inverse_time"])
+@pytest.mark.parametrize("good_value", [None, "exponential", "inverse_time", "step"])
 def test_valid_lr_schedule_accepted(good_value):
     DummyModel(lr_schedule=good_value)._validate_params()
 
