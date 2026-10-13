@@ -292,8 +292,10 @@ def test_default_params_and_no_weights_before_fit():
         "random_state": None,
         "l1_ratio": 0.5,
         "momentum": 0.0,
+        "nesterov": False,
         "lr_schedule": None,
         "lr_decay": 0.9,
+        "lr_step_size": 10,
         "store_gradients": False,
         "callbacks": None,
         "batch_size": None,
@@ -405,10 +407,66 @@ def test_momentum_speeds_up_ill_conditioned_problem():
     assert heavy.loss_history_[-1] < 0.1 * plain.loss_history_[-1]
 
 
-def test_fit_twice_with_momentum_gives_same_result():
+def test_nesterov_oscillates_less_than_heavy_ball():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(50, 2)) * np.array([1.0, 0.1])
+    y = X @ np.array([1.0, 10.0])
+    params = {"learning_rate": 0.5, "max_iter": 200, "tol": 0.0, "momentum": 0.9}
+    heavy = LinearRegression(**params).fit(X, y)
+    nesterov = LinearRegression(nesterov=True, **params).fit(X, y)
+
+    heavy_rises = np.sum(np.diff(heavy.loss_history_) > 0)
+    nesterov_rises = np.sum(np.diff(nesterov.loss_history_) > 0)
+    assert nesterov_rises < heavy_rises
+    assert nesterov.loss_history_[-1] < heavy.loss_history_[-1]
+
+
+def test_nesterov_has_narrower_stable_step_range():
+    # Кривизна этой задачи L ≈ 1. При β = 0.9 обычный момент устойчив
+    # при lr·L < 2(1 + β) = 3.8, Нестеров при lr·L < 2(1 + β)/(1 + 2β) ≈ 1.36.
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(50, 2)) * np.array([1.0, 0.1])
+    y = X @ np.array([1.0, 10.0])
+    params = {"learning_rate": 1.5, "max_iter": 200, "tol": 0.0, "momentum": 0.9}
+    heavy = LinearRegression(**params).fit(X, y)
+    nesterov = LinearRegression(nesterov=True, **params).fit(X, y)
+
+    assert heavy.loss_history_[-1] < 1e-6
+    assert nesterov.loss_history_[-1] > 1e6 * nesterov.loss_history_[0]
+
+
+def test_nesterov_equals_lookahead_formulation():
+    # Классическая запись: u = β·u − lr·∇J(w + β·u), w = w + u.
+    # Наши веса совпадают с точкой «взгляда вперёд» w + β·u.
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(30, 3))
+    y = X @ np.array([1.0, -2.0, 0.5]) + rng.normal(0, 0.1, 30)
+    lr, beta, steps = 0.1, 0.8, 15
+    model = LinearRegression(
+        fit_intercept=False,
+        learning_rate=lr,
+        momentum=beta,
+        nesterov=True,
+        max_iter=steps,
+        tol=0.0,
+    ).fit(X, y)
+
+    w = np.zeros(3)
+    u = np.zeros(3)
+    for _ in range(steps):
+        lookahead = w + beta * u
+        grad = X.T @ (X @ lookahead - y) / len(y)
+        u = beta * u - lr * grad
+        w = w + u
+
+    assert np.allclose(model.coef_, w + beta * u)
+
+
+@pytest.mark.parametrize("nesterov", [False, True])
+def test_fit_twice_with_momentum_gives_same_result(nesterov):
     X = np.array([[1.0], [2.0], [3.0]])
     y = np.array([2.0, 4.0, 6.0])
-    model = LinearRegression(momentum=0.9, max_iter=20, tol=0.0)
+    model = LinearRegression(momentum=0.9, nesterov=nesterov, max_iter=20, tol=0.0)
 
     first = model.fit(X, y).coef_.copy()
     second = model.fit(X, y).coef_.copy()

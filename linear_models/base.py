@@ -39,8 +39,10 @@ class BaseLinearModel(ABC):
     в штрафе "elasticnet", число из [0, 1]; при других penalty не используется).
 
     Дополнительно: momentum (коэффициент скорости β, число из [0, 1); 0.0 — обычный
-    спуск), lr_schedule (None, "exponential" или "inverse_time": шаг убывает с номером
-    итерации) и lr_decay (параметр убывания, число > 0, для "exponential" не больше 1).
+    спуск), nesterov (True: момент Нестерова, требует momentum > 0), lr_schedule
+    (None, "exponential", "inverse_time" или "step": шаг убывает с номером итерации),
+    lr_decay (параметр убывания, число > 0, для "exponential" и "step" не больше 1) и
+    lr_step_size (для "step": шаг умножается на lr_decay каждые lr_step_size итераций).
     store_gradients (True: сохранить gradient_history_ формы (n_iter_, d + 1), строка
     i градиент цели перед шагом i, последний столбец интерцепт), callbacks (список
     функций cb(model, iteration, loss), вызываются после каждой итерации; True из
@@ -66,8 +68,10 @@ class BaseLinearModel(ABC):
         random_state=None,
         l1_ratio=0.5,
         momentum=0.0,
+        nesterov=False,
         lr_schedule=None,
         lr_decay=0.9,
+        lr_step_size=10,
         store_gradients=False,
         callbacks=None,
         batch_size=None,
@@ -84,8 +88,10 @@ class BaseLinearModel(ABC):
         self.random_state = random_state
         self.l1_ratio = l1_ratio
         self.momentum = momentum
+        self.nesterov = nesterov
         self.lr_schedule = lr_schedule
         self.lr_decay = lr_decay
+        self.lr_step_size = lr_step_size
         self.store_gradients = store_gradients
         self.callbacks = callbacks
         self.batch_size = batch_size
@@ -132,13 +138,21 @@ class BaseLinearModel(ABC):
             return self.learning_rate * self.lr_decay**t
         if self.lr_schedule == "inverse_time":
             return self.learning_rate / (1 + self.lr_decay * t)
+        if self.lr_schedule == "step":
+            return self.learning_rate * self.lr_decay ** (t // self.lr_step_size)
 
+    def _momentum_step(self, velocity, grad):
+        """Новая скорость и направление шага: w = w - lr * direction.
 
-def _momentum_step(self, velocity, grad):
-    velocity = self.momentum * velocity + grad
-    if self.nesterov:
-        return velocity, grad + self.momentum * velocity
-    return velocity, velocity
+        Обычный момент (heavy ball): v = β·v + g, direction = v.
+        Нестеров (форма PyTorch): v = β·v + g, direction = g + β·v, то есть
+        шаг делается так, будто скорость уже применили ещё раз («взгляд вперёд»).
+        При β = 0 оба варианта дают direction = g, обычный спуск.
+        """
+        velocity = self.momentum * velocity + grad
+        if self.nesterov:
+            return velocity, grad + self.momentum * velocity
+        return velocity, velocity
 
     def _epoch_batches(self, n_samples, batch_size, rng):
         """Батчи одной эпохи: None (все данные) или массивы индексов."""
@@ -193,11 +207,11 @@ def _momentum_step(self, velocity, grad):
                     gradients.append(
                         np.append(grad_w, grad_b if self.fit_intercept else 0.0)
                     )
-                velocity_w = self.momentum * velocity_w + grad_w
-                self.coef_ = self.coef_ - lr * velocity_w
+                velocity_w, step_w = self._momentum_step(velocity_w, grad_w)
+                self.coef_ = self.coef_ - lr * step_w
                 if self.fit_intercept:
-                    velocity_b = self.momentum * velocity_b + grad_b
-                    self.intercept_ = self.intercept_ - lr * velocity_b
+                    velocity_b, step_b = self._momentum_step(velocity_b, grad_b)
+                    self.intercept_ = self.intercept_ - lr * step_b
             loss = self._objective(X, y, sample_weight)
             self.loss_history_.append(loss)
             self.n_iter_ = i + 1
@@ -277,24 +291,32 @@ def _momentum_step(self, velocity, grad):
             raise ValueError(f"tol must be a non-negative number, got {self.tol!r}")
         if not _is_number(self.alpha) or self.alpha < 0:
             raise ValueError(f"alpha must be a non-negative number, got {self.alpha!r}")
-        if self.lr_schedule not in (None, "exponential", "inverse_time"):
+        if self.lr_schedule not in (None, "exponential", "inverse_time", "step"):
             raise ValueError(
-                "lr_schedule must be None, 'exponential' or 'inverse_time', "
+                "lr_schedule must be None, 'exponential', 'inverse_time' or 'step', "
                 f"got {self.lr_schedule!r}"
             )
         if not _is_number(self.lr_decay) or self.lr_decay <= 0:
             raise ValueError(
                 f"lr_decay must be a positive number, got {self.lr_decay!r}"
             )
-        if self.lr_schedule == "exponential" and self.lr_decay > 1:
+        if self.lr_schedule in ("exponential", "step") and self.lr_decay > 1:
             raise ValueError(
-                "lr_decay must be <= 1 for lr_schedule='exponential', "
+                f"lr_decay must be <= 1 for lr_schedule={self.lr_schedule!r}, "
                 f"got {self.lr_decay!r}"
+            )
+        if not _is_int(self.lr_step_size) or self.lr_step_size < 1:
+            raise ValueError(
+                f"lr_step_size must be an integer >= 1, got {self.lr_step_size!r}"
             )
         if not _is_number(self.momentum) or not 0 <= self.momentum < 1:
             raise ValueError(
                 f"momentum must be a number in [0, 1), got {self.momentum!r}"
             )
+        if self.nesterov is not True and self.nesterov is not False:
+            raise ValueError(f"nesterov must be True or False, got {self.nesterov!r}")
+        if self.nesterov and self.momentum == 0:
+            raise ValueError("nesterov=True requires momentum > 0")
         if self.store_gradients is not True and self.store_gradients is not False:
             raise ValueError(
                 f"store_gradients must be True or False, got {self.store_gradients!r}"
