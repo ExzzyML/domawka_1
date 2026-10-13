@@ -1,7 +1,9 @@
+import warnings
+
 import numpy as np
 import pytest
 
-from linear_models.base import BaseLinearModel, NotFittedError
+from linear_models.base import BaseLinearModel, ConvergenceWarning, NotFittedError
 from linear_models.linear_regression import LinearRegression
 from linear_models.logistic_regression import LogisticRegression
 
@@ -832,3 +834,71 @@ def test_predict_and_score_reject_nan(model):
         model.predict(X_bad)
     with pytest.raises(ValueError, match="y must not contain NaN or infinity"):
         model.score(X, [0.0, np.nan, 0.0, 1.0])
+
+
+# --- ConvergenceWarning: не сошлись за max_iter или разошлись ---
+
+_X_LINE = np.arange(6, dtype=float).reshape(-1, 1)
+_Y_LINE = 2 * _X_LINE[:, 0] + 1
+
+
+def _fit_without_warnings(model, X=_X_LINE, y=_Y_LINE):
+    """Обучить, превращая любое предупреждение в ошибку."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        return model.fit(X, y)
+
+
+def test_convergence_warning_is_a_user_warning():
+    assert issubclass(ConvergenceWarning, UserWarning)
+
+
+def test_warns_when_max_iter_is_reached():
+    model = LinearRegression(learning_rate=0.01, max_iter=3, tol=1e-6)
+    with pytest.warns(ConvergenceWarning, match="did not converge in max_iter=3"):
+        model.fit(_X_LINE, _Y_LINE)
+    assert model.n_iter_ == 3
+
+
+def test_no_warning_when_converged_by_tol():
+    model = _fit_without_warnings(
+        LinearRegression(learning_rate=0.05, max_iter=10_000, tol=1e-10)
+    )
+    assert model.n_iter_ < 10_000
+
+
+def test_no_warning_when_tol_is_zero():
+    model = _fit_without_warnings(LinearRegression(max_iter=5, tol=0.0))
+    assert model.n_iter_ == 5
+
+
+def test_no_warning_when_callback_stops_training():
+    model = _fit_without_warnings(
+        LinearRegression(max_iter=100, callbacks=[lambda m, i, loss: i == 2])
+    )
+    assert model.n_iter_ == 2
+
+
+def test_no_warning_for_analytic_solver():
+    _fit_without_warnings(LinearRegression(solver="analytic"))
+
+
+def test_divergence_stops_training_with_one_clear_warning():
+    model = LinearRegression(learning_rate=10.0, max_iter=1000)
+    X = np.array([[0.0, 100.0], [1.0, -50.0], [2.0, 80.0], [3.0, -90.0]])
+    y = np.array([0.0, 1.0, 0.0, 1.0])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model.fit(X, y)
+    messages = [w for w in caught if issubclass(w.category, ConvergenceWarning)]
+    assert len(messages) == 1 and "diverged" in str(messages[0].message)
+    assert all(issubclass(w.category, ConvergenceWarning) for w in caught)
+    assert model.n_iter_ < 1000
+    assert not np.isfinite(model.loss_history_[-1])
+
+
+def test_verbose_reports_diverged_reason(capsys):
+    model = LinearRegression(learning_rate=10.0, max_iter=1000, verbose=True)
+    with pytest.warns(ConvergenceWarning):
+        model.fit(np.array([[0.0], [100.0], [-80.0]]), np.array([0.0, 1.0, 2.0]))
+    assert "reason: diverged" in capsys.readouterr().out

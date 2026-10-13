@@ -1,5 +1,6 @@
 import math
 import numbers
+import warnings
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -21,6 +22,10 @@ def _is_int(value):
 
 class NotFittedError(ValueError):
     """Модель используется до обучения."""
+
+
+class ConvergenceWarning(UserWarning):
+    """Градиентный спуск не сошёлся: исчерпан max_iter или цель стала inf/nan."""
 
 
 class BaseLinearModel(ABC):
@@ -138,11 +143,23 @@ class BaseLinearModel(ABC):
             yield order[start : start + batch_size]
 
     def _fit_gradient(self, X, y, sample_weight=None):
+        """Градиентный спуск; предупреждения numpy о переполнении отключены.
+
+        При расходимости numpy сам печатал бы «overflow encountered» на каждой
+        операции; вместо этого спуск останавливается с одним понятным
+        ConvergenceWarning (см. _gradient_descent).
+        """
+        with np.errstate(over="ignore", invalid="ignore"):
+            return self._gradient_descent(X, y, sample_weight)
+
+    def _gradient_descent(self, X, y, sample_weight=None):
         """Градиентный спуск по эпохам (с mini-batch, momentum и расписанием шага).
 
         Итерация это эпоха: один проход по данным, в котором на каждый батч
         делается один шаг. Обновляет coef_ и intercept_, ведёт историю,
-        вызывает callbacks.
+        вызывает callbacks. Если цель стала inf/nan, спуск останавливается
+        (reason "diverged"); при исчерпании max_iter с tol > 0 и при
+        расходимости выдаётся ConvergenceWarning.
         """
         self.loss_history_ = []
         self.__dict__.pop("gradient_history_", None)
@@ -177,6 +194,9 @@ class BaseLinearModel(ABC):
             loss = self._objective(X, y, sample_weight)
             self.loss_history_.append(loss)
             self.n_iter_ = i + 1
+            if not np.isfinite(loss):
+                reason = "diverged"
+                break
             if self.verbose and (i == 0 or (i + 1) % 100 == 0):
                 print(f"iter {i + 1}: J={loss:.6g}")
             if self._run_callbacks(i + 1, loss):
@@ -190,12 +210,36 @@ class BaseLinearModel(ABC):
                 break
         if self.store_gradients:
             self.gradient_history_ = np.array(gradients)
+        self._warn_if_not_converged(reason)
         if self.verbose:
             print(
                 f"stopped at iteration {self.n_iter_}: "
                 f"J={self.loss_history_[-1]:.6g}, reason: {reason}"
             )
         return self
+
+    def _warn_if_not_converged(self, reason):
+        """ConvergenceWarning при расходимости или при исчерпании max_iter.
+
+        При tol == 0 останов по tol отключён сознательно, и прогон всех
+        max_iter итераций это ожидаемое поведение: предупреждения нет.
+        """
+        if reason == "diverged":
+            warnings.warn(
+                f"objective became {self.loss_history_[-1]} at iteration "
+                f"{self.n_iter_}: gradient descent diverged, training stopped; "
+                "decrease learning_rate or standardize features",
+                ConvergenceWarning,
+                stacklevel=5,
+            )
+        elif reason == "max_iter" and self.tol > 0:
+            warnings.warn(
+                f"gradient descent did not converge in max_iter={self.max_iter} "
+                f"iterations (last objective change >= tol={self.tol}); "
+                "increase max_iter or learning_rate",
+                ConvergenceWarning,
+                stacklevel=5,
+            )
 
     def _run_callbacks(self, iteration, loss):
         """Вызвать все callbacks; True, если хотя бы один вернул True."""
