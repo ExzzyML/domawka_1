@@ -62,7 +62,9 @@ class BaseLinearModel(ABC):
     перемешивание). При батчах итерация это эпоха: проход по данным, на каждый
     батч один шаг; loss_history_ и n_iter_ считаются по эпохам.
 
-    После fit доступны coef_, intercept_, n_iter_ и loss_history_.
+    После fit доступны coef_, intercept_, n_iter_ и loss_history_. У
+    классификатора с несколькими классами coef_ имеет форму (K, d), а
+    intercept_ форму (K,).
     """
 
     def __init__(
@@ -170,6 +172,18 @@ class BaseLinearModel(ABC):
         if self.lr_schedule == "step":
             return self.learning_rate * self.lr_decay ** (t // self.lr_step_size)
 
+    def _gradient_row(self, grad_w, grad_b):
+        """Строка gradient_history_: градиент по весам и по интерцепту.
+
+        Двоичный случай: (w_1, ..., w_d, b). Несколько классов (grad_w формы
+        (K, d)): для каждого класса подряд (w_k1, ..., w_kd, b_k), всего
+        K·(d + 1) чисел. Без интерцепта на его месте стоят нули.
+        """
+        if np.ndim(grad_w) == 1:
+            return np.append(grad_w, grad_b if self.fit_intercept else 0.0)
+        intercept = grad_b if self.fit_intercept else np.zeros(grad_w.shape[0])
+        return np.column_stack([grad_w, intercept]).ravel()
+
     def _momentum_step(self, velocity, grad):
         """Новая скорость и направление шага: w = w - lr * direction.
 
@@ -235,9 +249,7 @@ class BaseLinearModel(ABC):
                 else:
                     grad_w = grad_w + self._penalty_gradient()
                 if self.store_gradients:
-                    gradients.append(
-                        np.append(grad_w, grad_b if self.fit_intercept else 0.0)
-                    )
+                    gradients.append(self._gradient_row(grad_w, grad_b))
                 velocity_w, step_w = self._momentum_step(velocity_w, grad_w)
                 self.coef_ = self.coef_ - lr * step_w
                 if proximal:
@@ -487,7 +499,7 @@ class BaseLinearModel(ABC):
     def _validate_predict_input(self, X):
         self._check_is_fitted()
         X = self._validate_X(X)
-        n_features = self.coef_.shape[0]
+        n_features = self.coef_.shape[-1]
         if X.shape[1] != n_features:
             raise ValueError(
                 f"X has {X.shape[1]} features, but the model was fitted "
