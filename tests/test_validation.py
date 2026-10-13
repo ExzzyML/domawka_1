@@ -3,7 +3,12 @@ import warnings
 import numpy as np
 import pytest
 
-from linear_models.base import BaseLinearModel, ConvergenceWarning, NotFittedError
+from linear_models.base import (
+    BaseLinearModel,
+    ConvergenceWarning,
+    NotFittedError,
+    _soft_threshold,
+)
 from linear_models.linear_regression import LinearRegression
 from linear_models.logistic_regression import LogisticRegression
 
@@ -972,3 +977,93 @@ def test_verbose_reports_diverged_reason(capsys):
     with pytest.warns(ConvergenceWarning):
         model.fit(np.array([[0.0], [100.0], [-80.0]]), np.array([0.0, 1.0, 2.0]))
     assert "reason: diverged" in capsys.readouterr().out
+
+
+# --- solver="proximal" и общий цикл итераций ---
+
+
+def test_soft_threshold_known_values():
+    values = np.array([0.3, -0.05, 0.1, -0.4, 0.0])
+
+    result = _soft_threshold(values, 0.1)
+
+    assert np.allclose(result, [0.2, 0.0, 0.0, -0.3, 0.0])
+    assert np.all(result[1:3] == 0.0)
+
+
+@pytest.mark.parametrize("solver", ["gradient", "proximal", "analytic", "newton"])
+def test_known_solvers_pass_base_validation(solver):
+    DummyModel(solver=solver)._validate_params()
+
+
+def test_proximal_with_momentum_raises():
+    model = DummyModel(solver="proximal", momentum=0.9)
+    with pytest.raises(ValueError, match="momentum is not supported"):
+        model._validate_params()
+
+
+@pytest.mark.parametrize(
+    "penalty, smooth, l1",
+    [
+        (None, [0.0, 0.0], 0.0),
+        ("l2", [2.0, -1.0], 0.0),
+        ("l1", [0.0, 0.0], 0.5),
+        ("elasticnet", [1.5, -0.75], 0.125),
+    ],
+)
+def test_proximal_splits_penalty_into_smooth_and_l1_parts(penalty, smooth, l1):
+    # alpha = 0.5, l1_ratio = 0.25, w = (4, -2):
+    # elasticnet: гладкая часть 0.5 · 0.75 · w, коэффициент L1 0.5 · 0.25
+    model = DummyModel(penalty=penalty, alpha=0.5, l1_ratio=0.25)
+    model.coef_ = np.array([4.0, -2.0])
+
+    assert np.allclose(model._smooth_penalty_gradient(), smooth)
+    assert model._l1_strength() == l1
+
+
+def _quadratic_l1_coef_history(solver):
+    history = []
+    model = _quadratic_model(
+        solver=solver,
+        penalty="l1",
+        alpha=1.0,
+        callbacks=[lambda m, i, loss: history.append(m.coef_.copy())],
+    )
+    X = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([0.0, 1.0])
+    model._fit_gradient(X, y)
+    return model, history
+
+
+def test_proximal_l1_reaches_exact_zeros():
+    # Шаг по гладкой части (градиент w), lr = 0.5, затем порог t = 0.5 · 1:
+    # (4, -2) -> (2, -1) -> S = (1.5, -0.5)
+    # (1.5, -0.5) -> (0.75, -0.25) -> S = (0.25, 0)
+    # (0.25, 0) -> (0.125, 0) -> S = (0, 0)
+    model, history = _quadratic_l1_coef_history("proximal")
+
+    assert np.allclose(history, [[1.5, -0.5], [0.25, 0.0], [0.0, 0.0]])
+    assert np.all(model.coef_ == 0.0)
+    assert np.isclose(model.intercept_, 0.25)
+    assert np.allclose(model.loss_history_, [3.75, 0.40625, 0.03125])
+
+
+def test_subgradient_l1_oscillates_around_zero():
+    # w = w - 0.5 · (w + sign(w)): (4, -2) -> (1.5, -0.5) -> (0.25, 0.25)
+    # -> (-0.375, -0.375): нули перепрыгиваются, точных нулей нет
+    model, history = _quadratic_l1_coef_history("gradient")
+
+    assert np.allclose(history, [[1.5, -0.5], [0.25, 0.25], [-0.375, -0.375]])
+    assert np.all(model.coef_ != 0.0)
+
+
+def test_convergence_warning_points_to_user_code():
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([0.0, 1.0, 1.0])
+    for model in (
+        LinearRegression(max_iter=2),
+        LogisticRegression(solver="newton", max_iter=1, tol=1e-12),
+    ):
+        with pytest.warns(ConvergenceWarning) as record:
+            model.fit(X, y)
+        assert record[0].filename == __file__

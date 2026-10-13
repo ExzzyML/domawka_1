@@ -20,19 +20,29 @@ def _is_int(value):
     return isinstance(value, numbers.Integral) and not isinstance(value, bool)
 
 
+def _soft_threshold(values, threshold):
+    """Мягкий порог S(v, t) = sign(v) * max(|v| - t, 0), поэлементно.
+
+    Это проксимальный оператор функции t * |v|: значения из [-t, t]
+    становятся точным нулём, остальные приближаются к нулю на t.
+    """
+    return np.sign(values) * np.maximum(np.abs(values) - threshold, 0.0)
+
+
 class NotFittedError(ValueError):
     """Модель используется до обучения."""
 
 
 class ConvergenceWarning(UserWarning):
-    """Градиентный спуск не сошёлся: исчерпан max_iter или цель стала inf/nan."""
+    """Итерационный solver не сошёлся: исчерпан max_iter или цель стала inf/nan."""
 
 
 class BaseLinearModel(ABC):
     """Общая основа линейных моделей: параметры, проверки и градиентный спуск.
 
-    Параметры: fit_intercept (обучать свободный член), solver ("gradient" или
-    "analytic"), penalty (None, "l1", "l2" или "elasticnet"), alpha (сила штрафа,
+    Параметры: fit_intercept (обучать свободный член), solver ("gradient",
+    "proximal", "analytic" или "newton"; последние два есть не у всех моделей),
+    penalty (None, "l1", "l2" или "elasticnet"), alpha (сила штрафа,
     >= 0), learning_rate (шаг спуска, > 0), max_iter (максимум итераций, целое >= 1),
     tol (порог раннего останова по изменению цели, >= 0; 0.0 отключает останов),
     verbose (печать прогресса), random_state (None или целое >= 0, для перемешивания), l1_ratio (доля L1
@@ -126,6 +136,25 @@ class BaseLinearModel(ABC):
             l2_part = (1 - self.l1_ratio) * self.coef_
             return self.alpha * (l1_part + l2_part)
 
+    def _smooth_penalty_gradient(self):
+        """Градиент гладкой (L2) части штрафа: для solver="proximal".
+
+        L1-часть в градиент не входит: её учитывает мягкий порог после шага.
+        """
+        if self.penalty == "l2":
+            return self.alpha * self.coef_
+        if self.penalty == "elasticnet":
+            return self.alpha * (1 - self.l1_ratio) * self.coef_
+        return np.zeros_like(self.coef_)
+
+    def _l1_strength(self):
+        """Коэффициент при Σ|w_j| в цели: alpha для "l1", alpha·l1_ratio для "elasticnet"."""
+        if self.penalty == "l1":
+            return self.alpha
+        if self.penalty == "elasticnet":
+            return self.alpha * self.l1_ratio
+        return 0.0
+
     def _objective(self, X, y, sample_weight=None):
         """Полная цель J = потери на данных + штраф (число)."""
         return self._loss(X, y, sample_weight) + self._penalty_loss()
@@ -168,30 +197,29 @@ class BaseLinearModel(ABC):
 
         При расходимости numpy сам печатал бы «overflow encountered» на каждой
         операции; вместо этого спуск останавливается с одним понятным
-        ConvergenceWarning (см. _gradient_descent).
+        ConvergenceWarning (см. _run_iterations).
         """
         with np.errstate(over="ignore", invalid="ignore"):
             return self._gradient_descent(X, y, sample_weight)
 
     def _gradient_descent(self, X, y, sample_weight=None):
-        """Градиентный спуск по эпохам (с mini-batch, momentum и расписанием шага).
+        """Градиентный (или проксимальный) спуск по эпохам.
 
         Итерация это эпоха: один проход по данным, в котором на каждый батч
-        делается один шаг. Обновляет coef_ и intercept_, ведёт историю,
-        вызывает callbacks. Если цель стала inf/nan, спуск останавливается
-        (reason "diverged"); при исчерпании max_iter с tol > 0 и при
-        расходимости выдаётся ConvergenceWarning.
+        делается один шаг (с mini-batch, momentum и расписанием шага).
+        solver="proximal": шаг делается по градиенту гладкой части цели
+        (потери + L2-часть штрафа), затем к coef_ применяется мягкий порог
+        с t = lr · (коэффициент L1), что даёт точные нули.
         """
-        self.loss_history_ = []
-        self.__dict__.pop("gradient_history_", None)
-        gradients = []
+        proximal = self.solver == "proximal"
         velocity_w = np.zeros_like(self.coef_)
         velocity_b = 0.0
-        reason = "max_iter"
         n_samples = X.shape[0]
         batch_size = n_samples if self.batch_size is None else self.batch_size
         rng = np.random.default_rng(self.random_state)
-        for i in range(self.max_iter):
+
+        def epoch(i, gradients):
+            nonlocal velocity_w, velocity_b
             lr = self._learning_rate_at(i)
             for batch in self._epoch_batches(n_samples, batch_size, rng):
                 if batch is None:
@@ -202,16 +230,40 @@ class BaseLinearModel(ABC):
                     if w_b is not None and np.sum(w_b) == 0:
                         continue
                 grad_w, grad_b = self._gradient(X_b, y_b, w_b)
-                grad_w = grad_w + self._penalty_gradient()
+                if proximal:
+                    grad_w = grad_w + self._smooth_penalty_gradient()
+                else:
+                    grad_w = grad_w + self._penalty_gradient()
                 if self.store_gradients:
                     gradients.append(
                         np.append(grad_w, grad_b if self.fit_intercept else 0.0)
                     )
                 velocity_w, step_w = self._momentum_step(velocity_w, grad_w)
                 self.coef_ = self.coef_ - lr * step_w
+                if proximal:
+                    self.coef_ = _soft_threshold(self.coef_, lr * self._l1_strength())
                 if self.fit_intercept:
                     velocity_b, step_b = self._momentum_step(velocity_b, grad_b)
                     self.intercept_ = self.intercept_ - lr * step_b
+
+        return self._run_iterations(X, y, sample_weight, epoch)
+
+    def _run_iterations(self, X, y, sample_weight, step):
+        """Общий цикл итерационных solver'ов.
+
+        step(i, gradients) делает одну итерацию (эпоху спуска или шаг Ньютона)
+        и при store_gradients добавляет градиенты в список gradients. Здесь же
+        ведётся история, вызываются callbacks и печатается прогресс. Если цель
+        стала inf/nan, обучение останавливается (reason "diverged"); при
+        исчерпании max_iter с tol > 0 и при расходимости выдаётся
+        ConvergenceWarning.
+        """
+        self.loss_history_ = []
+        self.__dict__.pop("gradient_history_", None)
+        gradients = []
+        reason = "max_iter"
+        for i in range(self.max_iter):
+            step(i, gradients)
             loss = self._objective(X, y, sample_weight)
             self.loss_history_.append(loss)
             self.n_iter_ = i + 1
@@ -245,21 +297,25 @@ class BaseLinearModel(ABC):
         При tol == 0 останов по tol отключён сознательно, и прогон всех
         max_iter итераций это ожидаемое поведение: предупреждения нет.
         """
+        # stacklevel=6: warn <- _warn_if_not_converged <- _run_iterations <-
+        # _gradient_descent / _newton_method <- _fit_gradient / _fit_newton <-
+        # fit <- строка пользователя.
+        method = "Newton's method" if self.solver == "newton" else "gradient descent"
         if reason == "diverged":
             warnings.warn(
                 f"objective became {self.loss_history_[-1]} at iteration "
-                f"{self.n_iter_}: gradient descent diverged, training stopped; "
+                f"{self.n_iter_}: {method} diverged, training stopped; "
                 "decrease learning_rate or standardize features",
                 ConvergenceWarning,
-                stacklevel=5,
+                stacklevel=6,
             )
         elif reason == "max_iter" and self.tol > 0:
             warnings.warn(
-                f"gradient descent did not converge in max_iter={self.max_iter} "
+                f"{method} did not converge in max_iter={self.max_iter} "
                 f"iterations (last objective change >= tol={self.tol}); "
                 "increase max_iter or learning_rate",
                 ConvergenceWarning,
-                stacklevel=5,
+                stacklevel=6,
             )
 
     def _run_callbacks(self, iteration, loss):
@@ -272,9 +328,10 @@ class BaseLinearModel(ABC):
         return stop
 
     def _validate_params(self):
-        if self.solver not in ("gradient", "analytic"):
+        if self.solver not in ("gradient", "proximal", "analytic", "newton"):
             raise ValueError(
-                f"solver must be 'gradient' or 'analytic', got {self.solver!r}"
+                "solver must be 'gradient', 'proximal', 'analytic' or 'newton', "
+                f"got {self.solver!r}"
             )
         if self.penalty not in (None, "l1", "l2", "elasticnet"):
             raise ValueError(
@@ -317,6 +374,11 @@ class BaseLinearModel(ABC):
             raise ValueError(f"nesterov must be True or False, got {self.nesterov!r}")
         if self.nesterov and self.momentum == 0:
             raise ValueError("nesterov=True requires momentum > 0")
+        if self.solver == "proximal" and self.momentum > 0:
+            raise ValueError(
+                "momentum is not supported by solver='proximal': "
+                "use momentum=0.0 or solver='gradient'"
+            )
         if self.store_gradients is not True and self.store_gradients is not False:
             raise ValueError(
                 f"store_gradients must be True or False, got {self.store_gradients!r}"

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from linear_models.base import NotFittedError
+from linear_models.base import ConvergenceWarning, NotFittedError
 from linear_models.logistic_regression import LogisticRegression, _sigmoid
 from tests.helpers import numerical_gradient
 
@@ -120,7 +120,7 @@ def test_validate_binary_y_accepts_both_classes():
 
 def test_analytic_solver_is_not_supported():
     model = LogisticRegression(solver="analytic")
-    with pytest.raises(ValueError, match="only solver='gradient'"):
+    with pytest.raises(ValueError, match="'gradient', 'proximal' or 'newton'"):
         model._validate_solver()
 
 
@@ -154,7 +154,7 @@ def test_fit_rejects_analytic_solver():
     X = np.array([[1.0], [2.0]])
     y = np.array([0.0, 1.0])
 
-    with pytest.raises(ValueError, match="only solver='gradient'"):
+    with pytest.raises(ValueError, match="'gradient', 'proximal' or 'newton'"):
         model.fit(X, y)
 
 
@@ -689,3 +689,212 @@ def test_logistic_mini_batch_reduces_loss():
 
     assert model.n_iter_ == 50
     assert model.loss_history_[-1] < model.loss_history_[0]
+
+
+# --- solver="newton" и solver="proximal" ---
+
+_X_TINY = np.array([[0.0], [1.0], [2.0], [3.0]])
+_Y_TINY = np.array([0.0, 1.0, 0.0, 1.0])
+
+
+def _noisy_problem():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(60, 2))
+    z = X @ np.array([1.5, -1.0]) + 0.3
+    y = (rng.random(60) < 1 / (1 + np.exp(-z))).astype(float)
+    return X, y, rng
+
+
+def _model_at_zero():
+    model = LogisticRegression()
+    model.coef_ = np.zeros(1)
+    model.intercept_ = 0.0
+    return model
+
+
+def test_gradient_and_hessian_at_zero():
+    # p = 0.5 у всех: r = p - y = (0.5, -0.5, 0.5, -0.5), p(1 - p) = 0.25
+    # g = (mean(x·r), mean(r)) = (-0.25, 0)
+    # H = 0.25 · [[mean(x²), mean(x)], [mean(x), 1]] = [[0.875, 0.375], [0.375, 0.25]]
+    grad, hessian = _model_at_zero()._gradient_and_hessian(_X_TINY, _Y_TINY)
+
+    assert np.allclose(grad, [-0.25, 0.0])
+    assert np.allclose(hessian, [[0.875, 0.375], [0.375, 0.25]])
+
+
+def test_gradient_and_hessian_match_numerical_derivatives():
+    X, y, rng = _noisy_problem()
+    model = LogisticRegression(penalty="l2", alpha=0.3)
+    model.coef_ = np.array([0.4, -0.7])
+    model.intercept_ = 0.2
+    weights = rng.integers(0, 4, 60).astype(float)
+    grad, hessian = model._gradient_and_hessian(X, y, weights)
+
+    def grad_at(theta):
+        m = LogisticRegression(penalty="l2", alpha=0.3)
+        m.coef_, m.intercept_ = theta[:2].copy(), theta[2]
+        return m._gradient_and_hessian(X, y, weights)[0]
+
+    def objective_at(theta):
+        m = LogisticRegression(penalty="l2", alpha=0.3)
+        m.coef_, m.intercept_ = theta[:2].copy(), theta[2]
+        return m._objective(X, y, weights)
+
+    theta = np.array([0.4, -0.7, 0.2])
+    eps = 1e-6
+    unit = np.eye(3)
+    num_grad = [
+        (objective_at(theta + eps * e) - objective_at(theta - eps * e)) / (2 * eps)
+        for e in unit
+    ]
+    num_hess = np.array(
+        [
+            (grad_at(theta + eps * e) - grad_at(theta - eps * e)) / (2 * eps)
+            for e in unit
+        ]
+    )
+    assert np.allclose(grad, num_grad, atol=1e-7)
+    assert np.allclose(hessian, num_hess, atol=1e-7)
+
+
+def test_first_newton_step_known_values():
+    # H^-1 = [[3.2, -4.8], [-4.8, 11.2]], d = H^-1 g = (-0.8, 1.2),
+    # полный шаг принят: θ = 0 - d = (0.8, -1.2)
+    model = LogisticRegression(solver="newton", max_iter=1, tol=0.0)
+
+    model.fit(_X_TINY, _Y_TINY)
+
+    assert np.allclose(model.coef_, [0.8])
+    assert np.isclose(model.intercept_, -1.2)
+    assert np.isclose(model.loss_history_[0], 0.5881488598689919)
+
+
+def test_line_search_halves_overlong_step():
+    # Направление 8·d: t = 1 даёт J = 1.62, t = 1/2 даёт J = 0.896 (обе больше
+    # J(0) = log 2 = 0.693), t = 1/4 даёт θ = (1.6, -2.4) и J = 0.629: принято
+    model = _model_at_zero()
+    grad, hessian = model._gradient_and_hessian(_X_TINY, _Y_TINY)
+    direction = 8 * np.linalg.solve(hessian, grad)
+
+    model._newton_line_search(_X_TINY, _Y_TINY, None, grad, direction)
+
+    assert np.allclose(model.coef_, [1.6])
+    assert np.isclose(model.intercept_, -2.4)
+    assert np.isclose(model._objective(_X_TINY, _Y_TINY), 0.6289684090508637)
+
+
+def test_line_search_keeps_params_for_ascent_direction():
+    model = _model_at_zero()
+    grad, hessian = model._gradient_and_hessian(_X_TINY, _Y_TINY)
+
+    model._newton_line_search(
+        _X_TINY, _Y_TINY, None, grad, -np.linalg.solve(hessian, grad)
+    )
+
+    assert np.array_equal(model.coef_, [0.0])
+    assert model.intercept_ == 0.0
+
+
+@pytest.mark.parametrize(
+    "penalty, alpha, coef, intercept",
+    [
+        # sklearn LogisticRegression(C=np.inf, tol=1e-14)
+        (None, 0.0, [2.253126134013, -1.490916504179], 0.160542672492),
+        # sklearn LogisticRegression(C=1 / (60 · 0.1), tol=1e-14)
+        ("l2", 0.1, [0.900090072581, -0.549622549638], 0.017722020898),
+    ],
+)
+def test_newton_matches_sklearn_in_few_iterations(penalty, alpha, coef, intercept):
+    X, y, _ = _noisy_problem()
+    model = LogisticRegression(solver="newton", penalty=penalty, alpha=alpha, tol=1e-12)
+
+    model.fit(X, y)
+
+    assert np.allclose(model.coef_, coef, atol=1e-8)
+    assert np.isclose(model.intercept_, intercept, atol=1e-8)
+    assert model.n_iter_ <= 8
+
+
+def test_newton_converges_quadratically():
+    # Расстояние до минимума по цели примерно возводится в квадрат на каждом шаге
+    X, y, _ = _noisy_problem()
+    model = LogisticRegression(solver="newton", tol=1e-15).fit(X, y)
+
+    gaps = np.array(model.loss_history_[:4]) - model.loss_history_[-1]
+    assert np.all(np.diff(model.loss_history_) <= 0)
+    assert gaps[1] < 0.2 * gaps[0]
+    assert gaps[2] < 0.05 * gaps[1]
+    assert gaps[3] < 1e-3 * gaps[2]
+
+
+def test_newton_needs_far_fewer_iterations_than_gradient():
+    X, y, _ = _noisy_problem()
+    newton = LogisticRegression(solver="newton", tol=1e-12).fit(X, y)
+    gradient = LogisticRegression(learning_rate=0.5, tol=1e-12, max_iter=100_000).fit(
+        X, y
+    )
+
+    assert newton.n_iter_ * 50 < gradient.n_iter_
+    assert np.allclose(newton.coef_, gradient.coef_, atol=1e-3)
+
+
+def test_newton_weighted_matches_sklearn():
+    # Эталон: sklearn LogisticRegression(C=1 / (Σw · 0.1)).fit(..., sample_weight=w)
+    X, y, rng = _noisy_problem()
+    weights = rng.integers(0, 4, 60).astype(float)
+    model = LogisticRegression(solver="newton", penalty="l2", alpha=0.1, tol=1e-12)
+
+    model.fit(X, y, sample_weight=weights)
+
+    assert np.allclose(model.coef_, [1.072794573940, -0.559093801561], atol=1e-8)
+    assert np.isclose(model.intercept_, -0.256077946674, atol=1e-8)
+
+
+def test_newton_without_intercept_and_gradient_history():
+    model = LogisticRegression(
+        solver="newton", fit_intercept=False, store_gradients=True, tol=1e-12
+    )
+
+    model.fit(_X_TINY, _Y_TINY)
+
+    assert model.intercept_ == 0.0
+    assert model.gradient_history_.shape == (model.n_iter_, 2)
+    # первая строка: градиент в нуле, (mean(x·r), 0) с нулевым столбцом интерцепта
+    assert np.allclose(model.gradient_history_[0], [-0.25, 0.0])
+
+
+@pytest.mark.parametrize("penalty", ["l1", "elasticnet"])
+def test_newton_rejects_non_smooth_penalty(penalty):
+    model = LogisticRegression(solver="newton", penalty=penalty, alpha=0.1)
+    with pytest.raises(ValueError, match="twice differentiable"):
+        model.fit(_X_TINY, _Y_TINY)
+
+
+def test_newton_rejects_batch_size():
+    model = LogisticRegression(solver="newton", batch_size=2)
+    with pytest.raises(ValueError, match="batch_size"):
+        model.fit(_X_TINY, _Y_TINY)
+
+
+def test_newton_warning_mentions_newton():
+    model = LogisticRegression(solver="newton", max_iter=1, tol=1e-12)
+    with pytest.warns(ConvergenceWarning, match="Newton's method did not converge"):
+        model.fit(_X_TINY, _Y_TINY)
+
+
+def test_proximal_l1_zeroes_noise_feature_like_sklearn_saga():
+    # Эталон: sklearn LogisticRegression(l1_ratio=1, solver="saga",
+    # C=1 / (60 · 0.05), tol=1e-14); третий признак шумовой
+    X, y, rng = _noisy_problem()
+    X = np.column_stack([X, rng.normal(size=60)])
+    params = {"penalty": "l1", "alpha": 0.05, "learning_rate": 0.5, "tol": 0.0}
+    proximal = LogisticRegression(solver="proximal", max_iter=20_000, **params)
+    gradient = LogisticRegression(solver="gradient", max_iter=20_000, **params)
+
+    proximal.fit(X, y)
+    gradient.fit(X, y)
+
+    assert np.allclose(proximal.coef_, [1.24118206666, -0.681651723044, 0.0], atol=1e-9)
+    assert np.isclose(proximal.intercept_, 0.034093540657, atol=1e-9)
+    assert proximal.coef_[2] == 0.0
+    assert abs(gradient.coef_[2]) > 0.01

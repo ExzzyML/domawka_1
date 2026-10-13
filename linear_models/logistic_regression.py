@@ -15,10 +15,15 @@ def _sigmoid(z):
 
 
 class LogisticRegression(BaseLinearModel):
-    """Логистическая регрессия для двух классов (0 и 1), solver только "gradient".
+    """Логистическая регрессия для двух классов (0 и 1).
 
     Потери: среднее значение log(1 + e^z) - y * z. Класс 1 присваивается,
     если P(1) строго больше threshold (по умолчанию 0.5).
+
+    solver: "gradient" (любой penalty), "proximal" (проксимальный спуск, точные
+    нули при L1 и elasticnet) или "newton" (метод Ньютона с дроблением шага,
+    penalty только None или "l2"; learning_rate, momentum и расписание шага
+    не используются).
     """
 
     def __init__(self, threshold=0.5, **kwargs):
@@ -50,8 +55,79 @@ class LogisticRegression(BaseLinearModel):
         self._validate_binary_y(y, sample_weight)
         self.coef_ = np.zeros(X.shape[1])
         self.intercept_ = 0.0
-        self._fit_gradient(X, y, sample_weight)
+        if self.solver == "newton":
+            self._fit_newton(X, y, sample_weight)
+        else:
+            self._fit_gradient(X, y, sample_weight)
         return self
+
+    def _fit_newton(self, X, y, sample_weight=None):
+        """Метод Ньютона; предупреждения numpy о переполнении отключены."""
+        with np.errstate(over="ignore", invalid="ignore"):
+            return self._newton_method(X, y, sample_weight)
+
+    def _newton_method(self, X, y, sample_weight=None):
+        def step(i, gradients):
+            grad, hessian = self._gradient_and_hessian(X, y, sample_weight)
+            if self.store_gradients:
+                gradients.append(grad if self.fit_intercept else np.append(grad, 0.0))
+            direction = np.linalg.lstsq(hessian, grad, rcond=None)[0]
+            self._newton_line_search(X, y, sample_weight, grad, direction)
+
+        return self._run_iterations(X, y, sample_weight, step)
+
+    def _params_vector(self):
+        """θ = (w, b) при fit_intercept, иначе θ = w."""
+        if self.fit_intercept:
+            return np.append(self.coef_, self.intercept_)
+        return self.coef_.copy()
+
+    def _set_params_vector(self, theta):
+        d = self.coef_.shape[0]
+        self.coef_ = theta[:d].copy()
+        if self.fit_intercept:
+            self.intercept_ = float(theta[d])
+
+    def _gradient_and_hessian(self, X, y, sample_weight=None):
+        """Градиент g и гессиан H цели J по θ = (w, b) (или по w без интерцепта).
+
+        g = Xa^T (s · (p - y)) / Σs + alpha·(w, 0),
+        H = Xa^T diag(s · p(1 - p)) Xa / Σs + alpha·diag(1, ..., 1, 0),
+        где Xa = [X, 1] (столбец единиц только при fit_intercept), s веса
+        объектов, p = σ(z). Штраф только L2 (или его нет), интерцепт не штрафуется.
+        """
+        n, d = X.shape
+        p = _sigmoid(self._linear_output(X))
+        total = self._total_weight(sample_weight, n)
+        Xa = np.column_stack([X, np.ones(n)]) if self.fit_intercept else X
+        residual = self._apply_weight(p - y, sample_weight)
+        curvature = self._apply_weight(p * (1 - p), sample_weight)
+        grad = Xa.T @ residual / total
+        hessian = (Xa.T * curvature) @ Xa / total
+        if self.penalty == "l2":
+            grad[:d] += self.alpha * self.coef_
+            hessian[np.arange(d), np.arange(d)] += self.alpha
+        return grad, hessian
+
+    def _newton_line_search(self, X, y, sample_weight, grad, direction):
+        """Шаг θ ← θ − t·direction с дроблением t = 1, 1/2, 1/4, ...
+
+        Берётся первое t, при котором выполнено условие Армихо
+        J(θ − t·d) ≤ J(θ) − 1e-4 · t · (g · d). Вдали от решения полный шаг
+        Ньютона может увеличить цель (особенно у почти разделимых данных);
+        дробление гарантирует, что цель не растёт. Если подходящего t нет
+        (уже в минимуме с точностью float), параметры не меняются.
+        """
+        theta = self._params_vector()
+        current = self._objective(X, y, sample_weight)
+        slope = float(grad @ direction)
+        t = 1.0
+        while t > 1e-10:
+            self._set_params_vector(theta - t * direction)
+            if self._objective(X, y, sample_weight) <= current - 1e-4 * t * slope:
+                return
+            t /= 2
+        self._set_params_vector(theta)
 
     def predict_proba(self, X):
         """Вернуть вероятности формы (n, 2): столбцы P(класс 0) и P(класс 1)."""
@@ -78,10 +154,20 @@ class LogisticRegression(BaseLinearModel):
             )
 
     def _validate_solver(self):
-        if self.solver != "gradient":
+        if self.solver not in ("gradient", "proximal", "newton"):
             raise ValueError(
-                f"LogisticRegression supports only solver='gradient', "
-                f"got {self.solver!r}"
+                "LogisticRegression supports solver 'gradient', 'proximal' or "
+                f"'newton', got {self.solver!r}"
+            )
+        if self.solver == "newton" and self.penalty not in (None, "l2"):
+            raise ValueError(
+                "solver='newton' supports only penalty None or 'l2' "
+                f"(the objective must be twice differentiable), got {self.penalty!r}"
+            )
+        if self.solver == "newton" and self.batch_size is not None:
+            raise ValueError(
+                "batch_size is not supported by solver='newton': "
+                "each step uses all samples"
             )
 
     def score(self, X, y, sample_weight=None):

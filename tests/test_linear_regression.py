@@ -788,3 +788,126 @@ def test_analytic_solver_rejects_batch_size():
     model = LinearRegression(solver="analytic", batch_size=2)
     with pytest.raises(ValueError, match="batch_size"):
         model.fit([[1.0], [2.0]], [1.0, 2.0])
+
+
+# --- solver="proximal" ---
+
+
+def _sparse_problem():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(30, 3))
+    y = X @ np.array([2.0, 0.0, -1.0]) + 0.5
+    return X, y
+
+
+@pytest.mark.parametrize(
+    "penalty, l1_ratio, coef, intercept",
+    [
+        # sklearn Lasso(alpha=0.1, tol=1e-14)
+        ("l1", 0.5, [1.9037073741, 0.0, -0.8282704366], 0.4309887386),
+        # sklearn ElasticNet(alpha=0.1, l1_ratio=0.5, tol=1e-14)
+        ("elasticnet", 0.5, [1.8714504689, 0.0, -0.8329167791], 0.4304613681),
+    ],
+)
+def test_proximal_matches_sklearn_with_exact_zeros(penalty, l1_ratio, coef, intercept):
+    X, y = _sparse_problem()
+    model = LinearRegression(
+        solver="proximal",
+        penalty=penalty,
+        l1_ratio=l1_ratio,
+        alpha=0.1,
+        learning_rate=0.05,
+        max_iter=5000,
+        tol=0.0,
+    ).fit(X, y)
+
+    assert np.allclose(model.coef_, coef, atol=1e-9)
+    assert np.isclose(model.intercept_, intercept, atol=1e-9)
+    assert model.coef_[1] == 0.0
+
+
+def test_proximal_lasso_selects_features_like_sklearn():
+    # Эталон: sklearn Lasso(alpha=0.4, tol=1e-14); истинные веса (3, 0, 0, -2, 0, 0.3)
+    rng = np.random.default_rng(0)
+    rng.normal(size=(30, 3))
+    X = rng.normal(size=(40, 6))
+    y = X @ np.array([3.0, 0.0, 0.0, -2.0, 0.0, 0.3]) + 1 + rng.normal(0, 0.5, 40)
+    model = LinearRegression(
+        solver="proximal",
+        penalty="l1",
+        alpha=0.4,
+        learning_rate=0.1,
+        max_iter=5000,
+        tol=0.0,
+    ).fit(X, y)
+
+    expected = [2.5106421142, 0.0, 0.0, -1.6834769514, 0.0, 0.0]
+    assert np.allclose(model.coef_, expected, atol=1e-9)
+    assert np.isclose(model.intercept_, 1.1047768438, atol=1e-9)
+    assert np.array_equal(model.coef_ == 0.0, [False, True, True, False, True, True])
+
+
+def test_subgradient_l1_has_no_exact_zeros_on_same_problem():
+    X, y = _sparse_problem()
+    model = LinearRegression(
+        penalty="l1", alpha=0.1, learning_rate=0.05, max_iter=5000, tol=0.0
+    ).fit(X, y)
+
+    assert model.coef_[1] != 0.0
+    assert abs(model.coef_[1]) < 0.01
+
+
+@pytest.mark.parametrize("penalty", [None, "l2"])
+def test_proximal_without_l1_equals_gradient(penalty):
+    X, y = _sparse_problem()
+    params = {"penalty": penalty, "alpha": 0.1, "max_iter": 50, "tol": 0.0}
+    proximal = LinearRegression(solver="proximal", **params).fit(X, y)
+    gradient = LinearRegression(solver="gradient", **params).fit(X, y)
+
+    assert np.array_equal(proximal.coef_, gradient.coef_)
+    assert proximal.intercept_ == gradient.intercept_
+
+
+def test_proximal_integer_weights_equal_repeated_rows():
+    X, y = _sparse_problem()
+    weights = np.array([2.0, 0.0, 1.0] * 10)
+    params = {
+        "solver": "proximal",
+        "penalty": "l1",
+        "alpha": 0.1,
+        "learning_rate": 0.05,
+        "max_iter": 3000,
+        "tol": 0.0,
+    }
+    weighted = LinearRegression(**params).fit(X, y, sample_weight=weights)
+    repeated = LinearRegression(**params).fit(
+        np.repeat(X, weights.astype(int), axis=0), np.repeat(y, weights.astype(int))
+    )
+
+    assert np.allclose(weighted.coef_, repeated.coef_, atol=1e-10)
+    assert np.isclose(weighted.intercept_, repeated.intercept_, atol=1e-10)
+
+
+def test_proximal_mini_batch_keeps_exact_zero():
+    X, y = _sparse_problem()
+    model = LinearRegression(
+        solver="proximal",
+        penalty="l1",
+        alpha=0.1,
+        learning_rate=0.02,
+        batch_size=5,
+        max_iter=100,
+        tol=0.0,
+        random_state=0,
+    ).fit(X, y)
+
+    # Шумный шаг SGD не сдвигает ноль: порог снова обнуляет малое значение.
+    # Решение близко к эталону Lasso (1.9037, 0, -0.8283), ноль точный.
+    assert np.allclose(model.coef_, [1.9037, 0.0, -0.8283], atol=5e-3)
+    assert model.coef_[1] == 0.0
+
+
+def test_newton_solver_is_rejected():
+    model = LinearRegression(solver="newton")
+    with pytest.raises(ValueError, match="only by LogisticRegression"):
+        model.fit([[1.0], [2.0]], [1.0, 2.0])

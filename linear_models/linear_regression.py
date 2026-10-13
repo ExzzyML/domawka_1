@@ -7,7 +7,8 @@ class LinearRegression(BaseLinearModel):
     """Линейная регрессия: z = X @ coef_ + intercept_, потери 1/(2n) * сумма (z - y)^2.
 
     solver="analytic" даёт точное решение (penalty None или "l2"),
-    solver="gradient" работает с любым penalty.
+    solver="gradient" работает с любым penalty, solver="proximal" решает L1 и
+    elasticnet проксимальным спуском (точные нули, как Lasso/ElasticNet).
     """
 
     def fit(self, X, y, sample_weight=None):
@@ -57,6 +58,11 @@ class LinearRegression(BaseLinearModel):
         self.loss_history_ = [self._objective(X, y, sample_weight)]
 
     def _validate_solver_penalty(self):
+        if self.solver == "newton":
+            raise ValueError(
+                "solver='newton' is supported only by LogisticRegression; "
+                "for LinearRegression use solver='analytic'"
+            )
         if self.solver == "analytic" and self.penalty not in (None, "l2"):
             raise ValueError(
                 f"solver='analytic' supports only penalty None or 'l2', "
